@@ -6,3 +6,11 @@ Description:
 		with.
 
 		Format: %d.%d.%d.%d, type:major:minor:build.
+
+What:		/sys/devices/pci0000:00/<dev>/keyphrase_notify
+Date:		December 2021
+Contact:	Cezary Rojewski <cezary.rojewski@intel.com>
+Description:
+		File which should be used by user space application making use
+		of speech recognition features of avs driver. On notification
+		contains 6 dwords, representing contents of FW notification.

@@ -265,6 +265,20 @@ static void avs_dsp_process_notification(struct avs_dev *adev, u64 header)
 		complete(&adev->fw_ready);
 		break;
 
+	case AVS_NOTIFY_PHRASE_DETECTED:
+		dev_dbg(adev->dev, "KEYPHRASE DETECTED!\n");
+		mutex_lock(&keyphrase_notify_mutex);
+
+		if (avs_keyphrase_data) {
+			dev_info(adev->dev, "Previous keyphrase not read\n");
+			kfree(avs_keyphrase_data);
+		}
+		avs_keyphrase_data = kmemdup(data, data_size, GFP_KERNEL);
+
+		mutex_unlock(&keyphrase_notify_mutex);
+		sysfs_notify(&adev->dev->kobj, "avs", "keyphrase_notify");
+		break;
+
 	case AVS_NOTIFY_LOG_BUFFER_STATUS:
 		avs_log_buffer_status_locked(adev, &msg);
 		break;
