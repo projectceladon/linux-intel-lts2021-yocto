@@ -98,6 +98,9 @@ static void avs_dsp_recovery(struct avs_dev *adev)
 	unsigned int core_mask;
 	int ret;
 
+	/* notify without valid wov data to inform userspace about recovery */
+	sysfs_notify(&adev->dev->kobj, "avs", "keyphrase_notify");
+
 	mutex_lock(&adev->comp_list_mutex);
 	/* disconnect all running streams */
 	list_for_each_entry(acomp, &adev->comp_list, node) {
