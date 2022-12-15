@@ -2695,19 +2695,6 @@ add_render_compute_tuning_settings(struct drm_i915_private *i915,
 		wa_write_or(wal, XEHP_L3SCQREG7, BLEND_FILL_CACHING_OPT_DIS);
 		wa_write_clr_set(wal, RT_CTRL, STACKID_CTRL, STACKID_CTRL_512);
 
-		/*
-		 * This is also listed as Wa_22012654132 for certain DG2
-		 * steppings, but the tuning setting programming is a superset
-		 * since it applies to all DG2 variants and steppings.
-		 *
-		 * Note that register 0xE420 is write-only and cannot be read
-		 * back for verification on DG2 (due to Wa_14012342262), so
-		 * we need to explicitly skip the readback.
-		 */
-		wa_add(wal, GEN10_CACHE_MODE_SS, 0,
-		       _MASKED_BIT_ENABLE(ENABLE_PREFETCH_INTO_IC),
-		       0 /* write-only, so skip validation */,
-		       true);
 	}
 
 	/*
@@ -2788,6 +2775,23 @@ general_render_compute_wa_init(struct intel_engine_cs *engine, struct i915_wa_li
 		wa_write_or(wal, COMP_MOD_CTRL, FORCE_MISS_FTLB);
 		wa_write_or(wal, VDBX_MOD_CTRL, FORCE_MISS_FTLB);
 		wa_write_or(wal, VEBX_MOD_CTRL, FORCE_MISS_FTLB);
+	}
+
+	if (IS_DG2_GRAPHICS_STEP(i915, G10, STEP_A0, STEP_C0) || IS_DG2_G11(i915)) {
+	        printk(KERN_INFO "i915: disable instruction prefetch\n");
+		/*
+		 * Wa_22012654132
+		 *
+		 * Note that register 0xE420 is write-only and cannot be read
+		 * back for verification on DG2 (due to Wa_14012342262), so
+		 * we need to explicitly skip the readback.
+		 */
+		wa_add(wal, GEN10_CACHE_MODE_SS, 0,
+			   _MASKED_BIT_ENABLE(ENABLE_PREFETCH_INTO_IC),
+			   0 /* write-only, so skip validation */,
+			   true);
+	} else {
+	    printk(KERN_INFO "i915: Enable instruction prefetch\n");
 	}
 }
 
