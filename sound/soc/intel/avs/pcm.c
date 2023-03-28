@@ -453,6 +453,23 @@ static const struct snd_pcm_hw_constraint_list hw_rates = {
 
 const struct snd_soc_dai_ops avs_dai_fe_ops;
 
+static int hw_rule_param_size(struct snd_pcm_hw_params *params, struct snd_pcm_hw_rule *rule)
+{
+	struct snd_interval *interval, to;
+
+	interval = hw_param_interval(params, rule->var);
+
+	snd_interval_any(&to);
+	to.integer = interval->integer;
+	to.max = interval->max;
+	/* Align to 4ms buffer size, most commonly used by the firmware. */
+	to.min = params_rate(params) / 1000 * 4;
+	if (rule->var == SNDRV_PCM_HW_PARAM_BUFFER_SIZE)
+		to.min *= params_periods(params);
+
+	return snd_interval_refine(interval, &to);
+}
+
 static int avs_dai_fe_startup(struct snd_pcm_substream *substream, struct snd_soc_dai *dai)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -479,6 +496,11 @@ static int avs_dai_fe_startup(struct snd_pcm_substream *substream, struct snd_so
 	/* avoid wrap-around with wall-clock */
 	snd_pcm_hw_constraint_minmax(runtime, SNDRV_PCM_HW_PARAM_BUFFER_TIME, 20, 178000000);
 	snd_pcm_hw_constraint_list(runtime, 0, SNDRV_PCM_HW_PARAM_RATE, &hw_rates);
+	/* Adjust buffer and period size based on the audio format. */
+	snd_pcm_hw_rule_add(runtime, 0, SNDRV_PCM_HW_PARAM_BUFFER_SIZE, hw_rule_param_size, NULL,
+			    SNDRV_PCM_HW_PARAM_BUFFER_SIZE, -1);
+	snd_pcm_hw_rule_add(runtime, 0, SNDRV_PCM_HW_PARAM_PERIOD_SIZE, hw_rule_param_size, NULL,
+			    SNDRV_PCM_HW_PARAM_PERIOD_SIZE, -1);
 	snd_pcm_set_sync(substream);
 
 	dev_dbg(dai->dev, "%s fe STARTUP tag %d str %p",
