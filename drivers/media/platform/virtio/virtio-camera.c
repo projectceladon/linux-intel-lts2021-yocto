@@ -229,6 +229,8 @@ static int vcam_g_fmt(struct file *file, void *fh, struct v4l2_format *f)
 	f->fmt.pix.field = V4L2_FIELD_NONE;
 	f->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
 
+	vcam->f = *f;
+
 	return 0;
 }
 
