@@ -36,14 +36,12 @@ struct virtio_camera {
 	struct mutex v4l2_lock;
 	struct vb2_queue vq;
 	struct virtqueue *vqx;
-	struct virtio_camera_ctrl_req req;
 	struct virtio_camera_config config;
 	struct v4l2_format f;
 };
 
 struct virtio_camera_buffer {
 	struct vb2_v4l2_buffer vb;
-	struct virtio_camera_ctrl_req req;
 	u8 uuid[16];
 };
 
@@ -65,6 +63,24 @@ vb_to_vcam_buf(struct vb2_buffer *vb)
 	return container_of(vbuf, struct virtio_camera_buffer, vb);
 }
 
+static struct virtio_camera_ctrl_req *
+virtio_camera_create_req(unsigned int cmd)
+{
+	struct virtio_camera_ctrl_req *vcam_req;
+
+	vcam_req = kmalloc(sizeof(*vcam_req), GFP_KERNEL);
+	if (unlikely(vcam_req == NULL)) {
+		pr_err("virtio_camera: could not allocate integrity buffer\n");
+		return NULL;
+	}
+
+	vcam_req->ctrl.header.cmd = cmd;
+	vcam_req->vb = NULL;
+	init_completion(&vcam_req->completion);
+
+	return vcam_req;
+}
+
 static void virtio_camera_control_ack(struct virtqueue *vq)
 {
 	struct virtio_camera_ctrl_req *req;
@@ -73,14 +89,11 @@ static void virtio_camera_control_ack(struct virtqueue *vq)
 	while ((req = virtqueue_get_buf(vq, &len))) {
 		complete(&req->completion);
 
-		if (req->vb)
+		if (req->vb) {
 			vb2_buffer_done(req->vb, VB2_BUF_STATE_DONE);
+			kfree(req);
+		}
 	}
-}
-
-static void vcam_init_request(struct virtio_camera_ctrl_req *req)
-{
-	init_completion(&req->completion);
 }
 
 static int vcam_vq_request(struct virtio_camera *vcam,
@@ -105,8 +118,6 @@ static int vcam_vq_request(struct virtio_camera *vcam,
 
 	sg_init_one(&vreq[2], &req->resp, sizeof(req->resp));
 	sgs[num_sgs++] = &vreq[2];
-
-	reinit_completion(&req->completion);
 
 	virtqueue_add_sgs(vcam->vqx, sgs, num_sgs - 1, 1, req, GFP_KERNEL);
 	virtqueue_kick(vcam->vqx);
@@ -154,35 +165,46 @@ static int vcam_querycap(struct file *file, void *priv,
 static int vcam_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 {
 	struct virtio_camera *vcam = video_drvdata(file);
+	struct virtio_camera_ctrl_req *vcam_req;
 	int err;
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_ENUM_FORMAT;
-	vcam->req.ctrl.header.index = f->index;
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_ENUM_FORMAT);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
 
-	err = vcam_vq_request(vcam, &vcam->req, NULL, 0, false);
+	vcam_req->ctrl.header.index = f->index;
+
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
 	if (err)
-		return err;
+		goto err_free;
 
-	f->pixelformat = vcam->req.resp.u.format.pixelformat;
+	f->pixelformat = vcam_req->resp.u.format.pixelformat;
 
-	return 0;
+err_free:
+	kfree(vcam_req);
+	return err;
 }
 
 static int vcam_enum_framesizes(struct file *file, void *fh,
 				struct v4l2_frmsizeenum *fsize)
 {
 	struct virtio_camera *vcam = video_drvdata(file);
-	struct virtio_camera_format_size *sz = &vcam->req.resp.u.format.size;
+	struct virtio_camera_format_size *sz;
+	struct virtio_camera_ctrl_req *vcam_req;
 	int err;
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_ENUM_SIZE;
-	vcam->req.ctrl.header.index = fsize->index;
-	vcam->req.ctrl.u.format.pixelformat = fsize->pixel_format;
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_ENUM_SIZE);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
 
-	err = vcam_vq_request(vcam, &vcam->req, NULL, 0, false);
+	vcam_req->ctrl.header.index = fsize->index;
+	vcam_req->ctrl.u.format.pixelformat = fsize->pixel_format;
+
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
 	if (err)
-		return err;
+		goto  err_free;
 
+	sz = &vcam_req->resp.u.format.size;
 	if (sz->min_width == sz->max_width && sz->min_height == sz->max_height) {
 		fsize->discrete.width = sz->width;
 		fsize->discrete.height = sz->height;
@@ -201,29 +223,34 @@ static int vcam_enum_framesizes(struct file *file, void *fh,
 			fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
 	}
 
-	return 0;
+err_free:
+	kfree(vcam_req);
+	return err;
 }
 
 static int vcam_g_fmt(struct file *file, void *fh, struct v4l2_format *f)
 {
 	struct virtio_camera *vcam = video_drvdata(file);
+	struct virtio_camera_ctrl_req *vcam_req;
 	int err;
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_GET_FORMAT;
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_GET_FORMAT);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
 
-	err = vcam_vq_request(vcam, &vcam->req, NULL, 0, false);
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
 	if (err)
-		return err;
+		goto err_free;
 
 	f->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
 	f->fmt.pix.flags = 0;
 	f->fmt.pix.field = V4L2_FIELD_NONE;
-	f->fmt.pix.width = vcam->req.resp.u.format.size.width;
-	f->fmt.pix.height = vcam->req.resp.u.format.size.height;
-	f->fmt.pix.pixelformat = vcam->req.resp.u.format.pixelformat;
-	f->fmt.pix.bytesperline = vcam->req.resp.u.format.size.stride;
-	f->fmt.pix.sizeimage = vcam->req.resp.u.format.size.sizeimage;
+	f->fmt.pix.width = vcam_req->resp.u.format.size.width;
+	f->fmt.pix.height = vcam_req->resp.u.format.size.height;
+	f->fmt.pix.pixelformat = vcam_req->resp.u.format.pixelformat;
+	f->fmt.pix.bytesperline = vcam_req->resp.u.format.size.stride;
+	f->fmt.pix.sizeimage = vcam_req->resp.u.format.size.sizeimage;
 
 	/* TODO */
 	f->fmt.pix.field = V4L2_FIELD_NONE;
@@ -231,34 +258,40 @@ static int vcam_g_fmt(struct file *file, void *fh, struct v4l2_format *f)
 
 	vcam->f = *f;
 
-	return 0;
+err_free:
+	kfree(vcam_req);
+	return err;
 }
 
 static int vcam_s_fmt(struct file *file, void *fh, struct v4l2_format *f)
 {
 	struct virtio_camera *vcam = video_drvdata(file);
+	struct virtio_camera_ctrl_req *vcam_req;
 	int err;
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_SET_FORMAT;
-	vcam->req.ctrl.u.format.size.width = f->fmt.pix.width;
-	vcam->req.ctrl.u.format.size.height = f->fmt.pix.height;
-	vcam->req.ctrl.u.format.size.stride = f->fmt.pix.bytesperline;
-	vcam->req.ctrl.u.format.pixelformat = f->fmt.pix.pixelformat;
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_SET_FORMAT);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
 
-	err = vcam_vq_request(vcam, &vcam->req, NULL, 0, false);
+	vcam_req->ctrl.u.format.size.width = f->fmt.pix.width;
+	vcam_req->ctrl.u.format.size.height = f->fmt.pix.height;
+	vcam_req->ctrl.u.format.size.stride = f->fmt.pix.bytesperline;
+	vcam_req->ctrl.u.format.pixelformat = f->fmt.pix.pixelformat;
+
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
 	if (err)
-		return err;
+		goto err_free;
 
 	f->fmt.pix.flags = 0;
 	f->fmt.pix.field = V4L2_FIELD_NONE;
-	f->fmt.pix.width = vcam->req.resp.u.format.size.width;
-	f->fmt.pix.height = vcam->req.resp.u.format.size.height;
-	f->fmt.pix.pixelformat = vcam->req.resp.u.format.pixelformat;
-	f->fmt.pix.bytesperline = vcam->req.resp.u.format.size.stride;
-	f->fmt.pix.sizeimage = vcam->req.resp.u.format.size.sizeimage;
+	f->fmt.pix.width = vcam_req->resp.u.format.size.width;
+	f->fmt.pix.height = vcam_req->resp.u.format.size.height;
+	f->fmt.pix.pixelformat = vcam_req->resp.u.format.pixelformat;
+	f->fmt.pix.bytesperline = vcam_req->resp.u.format.size.stride;
+	f->fmt.pix.sizeimage = vcam_req->resp.u.format.size.sizeimage;
 
 	/* TODO */
 	f->fmt.pix.field = V4L2_FIELD_NONE;
@@ -266,39 +299,47 @@ static int vcam_s_fmt(struct file *file, void *fh, struct v4l2_format *f)
 
 	vcam->f = *f;
 
+err_free:
+	kfree(vcam_req);
 	return err;
 }
 
 static int vcam_try_fmt(struct file *file, void *fh, struct v4l2_format *f)
 {
 	struct virtio_camera *vcam = video_drvdata(file);
+	struct virtio_camera_ctrl_req *vcam_req;
 	int err;
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_TRY_FORMAT;
-	vcam->req.ctrl.u.format.size.width = f->fmt.pix.width;
-	vcam->req.ctrl.u.format.size.height = f->fmt.pix.height;
-	vcam->req.ctrl.u.format.size.stride = f->fmt.pix.bytesperline;
-	vcam->req.ctrl.u.format.pixelformat = f->fmt.pix.pixelformat;
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_TRY_FORMAT);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
 
-	err = vcam_vq_request(vcam, &vcam->req, NULL, 0, false);
+	vcam_req->ctrl.u.format.size.width = f->fmt.pix.width;
+	vcam_req->ctrl.u.format.size.height = f->fmt.pix.height;
+	vcam_req->ctrl.u.format.size.stride = f->fmt.pix.bytesperline;
+	vcam_req->ctrl.u.format.pixelformat = f->fmt.pix.pixelformat;
+
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
 	if (err)
-		return err;
+		goto err_free;
 
 	f->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
 	f->fmt.pix.flags = 0;
 	f->fmt.pix.field = V4L2_FIELD_NONE;
-	f->fmt.pix.width = vcam->req.resp.u.format.size.width;
-	f->fmt.pix.height = vcam->req.resp.u.format.size.height;
-	f->fmt.pix.pixelformat = vcam->req.resp.u.format.pixelformat;
-	f->fmt.pix.bytesperline = vcam->req.resp.u.format.size.stride;
-	f->fmt.pix.sizeimage = vcam->req.resp.u.format.size.sizeimage;
+	f->fmt.pix.width = vcam_req->resp.u.format.size.width;
+	f->fmt.pix.height = vcam_req->resp.u.format.size.height;
+	f->fmt.pix.pixelformat = vcam_req->resp.u.format.pixelformat;
+	f->fmt.pix.bytesperline = vcam_req->resp.u.format.size.stride;
+	f->fmt.pix.sizeimage = vcam_req->resp.u.format.size.sizeimage;
 
 	/* TODO */
 	f->fmt.pix.field = V4L2_FIELD_NONE;
 	f->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
 
-	return 0;
+err_free:
+	kfree(vcam_req);
+	return err;
 }
 
 static int vcam_enum_input(struct file *filp, void *p,
@@ -380,6 +421,7 @@ static int vcam_buf_init(struct vb2_buffer *vb)
 	struct virtio_camera *vcam = vb2_get_drv_priv(vb->vb2_queue);
 	struct virtio_camera_buffer *vbuf = vb_to_vcam_buf(vb);
 	struct virtio_camera_mem_entry *ents;
+	struct virtio_camera_ctrl_req *vcam_req;
 	struct scatterlist *sg;
 	struct sg_table *sgt;
 	unsigned int i;
@@ -399,31 +441,42 @@ static int vcam_buf_init(struct vb2_buffer *vb)
 		ents[i].length = cpu_to_le32(sg->length);
 	}
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_CREATE_BUFFER;
-	vcam->req.ctrl.u.buffer.num_entries = sgt->nents;
+	vcam_req =	virtio_camera_create_req(VIRTIO_CAMERA_CMD_CREATE_BUFFER);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
 
-	err = vcam_vq_request(vcam, &vcam->req, ents, sgt->nents, false);
+	vcam_req->ctrl.u.buffer.num_entries = sgt->nents;
+
+	err = vcam_vq_request(vcam, vcam_req, ents, sgt->nents, false);
 	kfree(ents);
 	if (err)
-		return err;
+		goto err_free;
 
-	memcpy(vbuf->uuid, vcam->req.resp.u.buffer.uuid, sizeof(vbuf->uuid));
+	memcpy(vbuf->uuid, vcam_req->resp.u.buffer.uuid, sizeof(vbuf->uuid));
 
-	vcam_init_request(&vbuf->req);
-	vbuf->req.vb = vb;
+	vcam_req->vb = vb;
 
-	return 0;
+err_free:
+	kfree(vcam_req);
+	return err;
 }
 
 static void vcam_buf_cleanup(struct vb2_buffer *vb)
 {
 	struct virtio_camera *vcam = vb2_get_drv_priv(vb->vb2_queue);
 	struct virtio_camera_buffer *vbuf = vb_to_vcam_buf(vb);
+	struct virtio_camera_ctrl_req *vcam_req;
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_DESTROY_BUFFER;
-	memcpy(vcam->req.ctrl.u.buffer.uuid, vbuf->uuid, sizeof(vbuf->uuid));
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_DESTROY_BUFFER);
+	if (unlikely(vcam_req == NULL)) {
+		pr_err("%s: Failed to clean vcam buffer\n", __func__);
+		return;
+	}
 
-	vcam_vq_request(vcam, &vcam->req, NULL, 0, false);
+	memcpy(vcam_req->ctrl.u.buffer.uuid, vbuf->uuid, sizeof(vbuf->uuid));
+	vcam_vq_request(vcam, vcam_req, NULL, 0, false);
+
+	kfree(vcam_req);
 }
 
 static int vcam_buf_prepare(struct vb2_buffer *vb)
@@ -439,39 +492,65 @@ static void vcam_buf_queue(struct vb2_buffer *vb)
 {
 	struct virtio_camera *vcam = vb2_get_drv_priv(vb->vb2_queue);
 	struct virtio_camera_buffer *vbuf = vb_to_vcam_buf(vb);
+	struct virtio_camera_ctrl_req *vcam_req;
 	int err;
 
-	vbuf->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_ENQUEUE_BUFFER;
-	memcpy(vbuf->req.ctrl.u.buffer.uuid, vbuf->uuid, sizeof(vbuf->uuid));
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_ENQUEUE_BUFFER);
+	if (unlikely(vcam_req == NULL)) {
+		pr_err("%s: Failed to queue a vcam buffer\n", __func__);
+		return;
+	}
 
-	err = vcam_vq_request(vcam, &vbuf->req, NULL, 0, true);
-	if (err)
+	memcpy(vcam_req->ctrl.u.buffer.uuid, vbuf->uuid, sizeof(vbuf->uuid));
+	vcam_req->vb = vb;
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, true);
+	if (err) {
 		vb2_buffer_done(vb, VB2_BUF_STATE_ERROR);
+		goto err_free;
+	}
+
+err_free:
+	kfree(vcam_req);
 }
 
 static int vcam_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct virtio_camera *vcam = vb2_get_drv_priv(q);
+	struct virtio_camera_ctrl_req *vcam_req;
 	int err;
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_STREAM_ON;
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_STREAM_ON);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
 
-	err = vcam_vq_request(vcam, &vcam->req, NULL, 0, false);
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
 	if (err)
-		return err;
+		goto err_free;
 
-	return 0;
+err_free:
+	kfree(vcam_req);
+	return err;
 }
 
 static void vcam_stop_streaming(struct vb2_queue *q)
 {
 	struct virtio_camera *vcam = vb2_get_drv_priv(q);
+	struct virtio_camera_ctrl_req *vcam_req;
+	int err;
 
-	vcam->req.ctrl.header.cmd = VIRTIO_CAMERA_CMD_STREAM_OFF;
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_STREAM_OFF);
+	if (unlikely(vcam_req == NULL)) {
+		pr_err("%s: Failed to stop streaming\n", __func__);
+		return;
+	}
 
-	vcam_vq_request(vcam, &vcam->req, NULL, 0, false);
+	/*TODO, mark all vcam buffers invaild when err occur*/
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
+	if (err)
+		pr_err("%s: Failed to stop streaming, err response\n", __func__);
 
 	vb2_wait_for_all_buffers(q);
+	kfree(vcam_req);
 }
 
 static const struct vb2_ops vcam_vb2_ops = {
@@ -507,7 +586,6 @@ static int virtio_camera_probe(struct virtio_device *vdev)
 
 	vdev->priv = vcam;
 	mutex_init(&vcam->v4l2_lock);
-	vcam_init_request(&vcam->req);
 	media_device_init(&vcam->mdev);
 	video_set_drvdata(&vcam->vdev, vcam);
 
