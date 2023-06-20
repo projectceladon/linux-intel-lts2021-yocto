@@ -33,6 +33,8 @@ enum virtio_camera_ctrl_type {
 
 struct virtio_camera_config {
 	__u8 name[256];
+	__le32 num_virtual_cameras;
+	__le32 nr_per_virtual_camera[16];
 };
 
 struct virtio_camera_mem_entry {
