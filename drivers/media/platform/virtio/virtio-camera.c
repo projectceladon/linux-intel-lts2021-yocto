@@ -132,12 +132,17 @@ virtio_camera_create_req(unsigned int cmd)
 static void virtio_camera_control_ack(struct virtqueue *vq)
 {
 	struct virtio_camera_ctrl_req *req;
+	struct vb2_v4l2_buffer *vbuf;
 	unsigned int len;
 
 	while ((req = virtqueue_get_buf(vq, &len))) {
 		complete(&req->completion);
 
 		if (req->vb) {
+			vbuf = to_vb2_v4l2_buffer(req->vb);
+			vbuf->sequence = req->resp.u.buffer.sequence;
+			vbuf->vb2_buf.timestamp = req->resp.u.buffer.timestamp;
+
 			vb2_buffer_done(req->vb, VB2_BUF_STATE_DONE);
 			kfree(req);
 		}

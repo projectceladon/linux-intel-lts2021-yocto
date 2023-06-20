@@ -73,6 +73,8 @@ struct virtio_camera_req_format {
 struct virtio_camera_req_buffer {
 	__le32 num_entries;
 	__u8 uuid[16];
+	__le32 sequence;
+	__le64 timestamp;
 };
 
 struct virtio_camera_op_ctrl_req {
