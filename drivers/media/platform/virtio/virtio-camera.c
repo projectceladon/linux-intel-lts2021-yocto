@@ -45,16 +45,6 @@ struct virtio_camera_buffer {
 	u8 uuid[16];
 };
 
-static const struct v4l2_file_operations vcam_v4l2_fops = {
-	.owner = THIS_MODULE,
-	.unlocked_ioctl = video_ioctl2,
-	.open = v4l2_fh_open,
-	.release = vb2_fop_release,
-	.poll = vb2_fop_poll,
-	.mmap = vb2_fop_mmap,
-	.read = vb2_fop_read,
-};
-
 static inline struct virtio_camera_buffer *
 vb_to_vcam_buf(struct vb2_buffer *vb)
 {
@@ -149,6 +139,70 @@ static int vcam_vq_request(struct virtio_camera *vcam,
 
 	return ret;
 }
+
+int vcam_v4l2_fh_open(struct file *filp)
+{
+	struct virtio_camera *vcam;
+	struct virtio_camera_ctrl_req *vcam_req;
+	int err;
+
+	vcam = video_drvdata(filp);
+
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_FILE_OPEN);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
+
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
+	if (err) {
+		pr_err("virtio-camera: file handler open failed because of err response.\n");
+		goto err_free;
+	}
+
+	err = v4l2_fh_open(filp);
+	if (err)
+		goto err_free;
+
+err_free:
+	kfree(vcam_req);
+	return err;
+}
+
+static int vcam_v4l2_fh_release(struct file *filp)
+{
+	struct virtio_camera *vcam;
+	struct virtio_camera_ctrl_req *vcam_req;
+	int err;
+
+	err = vb2_fop_release(filp);
+	if (err)
+		goto err;
+
+	vcam = video_drvdata(filp);
+	vcam_req = virtio_camera_create_req(VIRTIO_CAMERA_CMD_FILE_CLOSE);
+	if (unlikely(vcam_req == NULL))
+		return -ENOMEM;
+
+	err = vcam_vq_request(vcam, vcam_req, NULL, 0, false);
+	if (err) {
+		pr_err("virtio-camera: file handler release failed because of err response.\n");
+		goto err_free;
+	}
+
+err_free:
+	kfree(vcam_req);
+err:
+	return err;
+}
+
+static const struct v4l2_file_operations vcam_v4l2_fops = {
+	.owner = THIS_MODULE,
+	.unlocked_ioctl = video_ioctl2,
+	.open = vcam_v4l2_fh_open,
+	.release = vcam_v4l2_fh_release,
+	.poll = vb2_fop_poll,
+	.mmap = vb2_fop_mmap,
+	.read = vb2_fop_read,
+};
 
 static int vcam_querycap(struct file *file, void *priv,
 			 struct v4l2_capability *cap)
