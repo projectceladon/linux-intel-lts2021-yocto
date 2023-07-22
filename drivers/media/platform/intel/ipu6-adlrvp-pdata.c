@@ -22,6 +22,9 @@
 #if IS_ENABLED(CONFIG_VIDEO_D4XX)
 #include <media/d4xx.h>
 #endif
+#if IS_ENABLED(CONFIG_VIDEO_MAX96722)
+#include <media/max96722.h>
+#endif
 
 #include "ipu.h"
 
@@ -751,6 +754,83 @@ static struct ipu_isys_subdev_info d4xx_sd_3 = {
 };
 #endif
 
+#if IS_ENABLED(CONFIG_VIDEO_MAX96722)
+static struct ipu_isys_csi2_config max96722_csi2_cfg = {
+	.nlanes = 4,
+	.port = 1,
+};
+
+#if IS_ENABLED(CONFIG_VIDEO_MAX9295A)
+static struct max9295a_platform_data max9295a_pdata = {
+	.fsync_gpio = 0,
+};
+#endif
+
+#if IS_ENABLED(CONFIG_VIDEO_MAX96717F)
+static struct max9295a_platform_data max96717f_pdata = {
+	.fsync_gpio = 0,
+};
+#endif
+
+static struct max96722_subdev_info max96722_subdevs[] = {
+#if IS_ENABLED(CONFIG_VIDEO_MAX96717F)
+	{
+		.board_info = {
+			.type = "max96717f_dummy",
+			.addr = 0x43,
+			.platform_data = &max96717f_pdata,
+		},
+		.rx_port = 0,
+		/* GPP_B23	- 0 + 664*/
+		.power_gpio = 687,
+		.phy_i2c_addr = 0x42,
+		.alias_addr = 0x43,
+		.ser_type = MAX_SER_96717F,
+	},
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_MAX9295A)
+	{
+		.board_info = {
+			.type = "max9295a_dummy",
+			.addr = 0x44,
+			.platform_data = &max9295a_pdata,
+		},
+		.rx_port = 1,
+		/* GPP_T3 - 26 + 696 */
+		.power_gpio = -1,
+		.fsync_gpio = 8,
+		.phy_i2c_addr = 0x42,
+		.alias_addr = 0x44,
+		.ser_type = MAX_SER_9295A,
+	},
+#endif
+};
+
+static struct max96722_platform_data max96722_pdata = {
+	.subdev_info = max96722_subdevs,
+	.subdev_num = ARRAY_SIZE(max96722_subdevs),
+	/* GPP_F1 - 197 + 952 */
+	.lock_gpio = 953,
+	/* GPP_S6 - 67 + 760 */
+	.errb_gpio = 766,
+	.errb_gpio_name = "ERRB",
+	.errb_gpio_flags =
+		IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+};
+
+static struct ipu_isys_subdev_info max96722_sd = {
+	.csi2 = &max96722_csi2_cfg,
+	.i2c = {
+		.board_info = {
+			.type = "max96722",
+			.addr = 0x29,
+			.platform_data = &max96722_pdata,
+		},
+		.i2c_adapter_bdf = "0000:00:15.1",
+	},
+};
+#endif
+
 static struct ipu_isys_clk_mapping clk_mapping[] = {
 	{ CLKDEV_INIT(NULL, NULL, NULL), NULL }
 };
@@ -774,6 +854,9 @@ static struct ipu_isys_subdev_pdata pdata = {
 		&d4xx_sd_1,
 		&d4xx_sd_2,
 		&d4xx_sd_3,
+#endif
+#if IS_ENABLED(CONFIG_VIDEO_MAX96722)
+		&max96722_sd,
 #endif
 		NULL,
 	},
