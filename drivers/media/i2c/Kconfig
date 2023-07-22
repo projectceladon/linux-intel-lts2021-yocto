@@ -1640,6 +1640,24 @@ config VIDEO_ISX031
     help
       This is a Video4Linux2 sensor-level driver for Sony ISX031 camera.
 
+config VIDEO_MAX9295A
+    depends on I2C && VIDEO_V4L2
+    tristate "MAX9295A dummy sensor"
+    help
+      This is a Video4Linux2 sensor-level driver for MAX9295A dummy sensor.
+
+config VIDEO_MAX96717F
+    depends on I2C && VIDEO_V4L2
+    tristate "MAX96717F dummy sensor"
+    help
+      This is a Video4Linux2 sensor-level driver for MAX96717F dummy sensor.
+
+config VIDEO_MAX96722
+    depends on I2C && VIDEO_V4L2
+    tristate "MAX96722 deserializer driver"
+    help
+      This is a Video4Linux2 driver for MAX96722 deserializer.
+
 endmenu
 
 endif # VIDEO_V4L2
