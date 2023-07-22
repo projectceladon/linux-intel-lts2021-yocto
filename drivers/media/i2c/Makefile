@@ -153,3 +153,6 @@ obj-$(CONFIG_VIDEO_TI960) += ti960.o
 ti960-objs      :=      ti953-ser.o ti960-des.o
 obj-$(CONFIG_VIDEO_IMX390) += imx390.o
 obj-$(CONFIG_VIDEO_ISX031) += isx031.o
+obj-$(CONFIG_VIDEO_MAX9295A) += max9295a_dummy.o
+obj-$(CONFIG_VIDEO_MAX96717F) += max96717f_dummy.o
+obj-$(CONFIG_VIDEO_MAX96722) += max96722.o
