@@ -331,7 +331,8 @@ i915-y += \
 	display/intel_vdsc.o \
 	display/intel_vrr.o \
 	display/vlv_dsi.o \
-	display/vlv_dsi_pll.o
+	display/vlv_dsi_pll.o \
+	display/intel_dsi_ser_drv.o
 
 i915-y += i915_perf.o
 

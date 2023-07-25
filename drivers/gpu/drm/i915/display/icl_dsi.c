@@ -46,6 +46,7 @@
 #include "intel_vdsc.h"
 #include "skl_scaler.h"
 #include "skl_universal_plane.h"
+#include "intel_dsi_ser_drv.h"
 
 static int header_credits_available(struct drm_i915_private *dev_priv,
 				    enum transcoder dsi_trans)
@@ -1201,6 +1202,9 @@ static void gen11_dsi_powerup_panel(struct intel_encoder *encoder)
 	intel_dsi_msleep(intel_dsi, intel_dsi->panel_on_delay);
 	intel_dsi_vbt_exec_sequence(intel_dsi, MIPI_SEQ_DEASSERT_RESET);
 	intel_dsi_vbt_exec_sequence(intel_dsi, MIPI_SEQ_INIT_OTP);
+
+    intel_dsi_ser_init();
+
 	intel_dsi_vbt_exec_sequence(intel_dsi, MIPI_SEQ_DISPLAY_ON);
 
 	/* ensure all panel commands dispatched before enabling transcoder */
@@ -1777,6 +1781,7 @@ static bool gen11_dsi_initial_fastset_check(struct intel_encoder *encoder,
 static void gen11_dsi_encoder_destroy(struct drm_encoder *encoder)
 {
 	intel_encoder_destroy(encoder);
+    intel_dsi_ser_module_exit();
 }
 
 static const struct drm_encoder_funcs gen11_dsi_encoder_funcs = {
@@ -2097,6 +2102,9 @@ void icl_dsi_init(struct drm_i915_private *dev_priv)
 	icl_dphy_param_init(intel_dsi);
 
 	icl_dsi_add_properties(intel_connector);
+
+    intel_dsi_ser_module_init(intel_connector->panel.vbt.lfp_lvds_vbt_mode->hdisplay,
+        intel_connector->panel.vbt.lfp_lvds_vbt_mode->vdisplay);
 	return;
 
 err:
