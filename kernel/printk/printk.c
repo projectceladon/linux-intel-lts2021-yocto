@@ -680,8 +680,8 @@ static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 
 	/* Ratelimit when not explicitly enabled. */
 	if (!(devkmsg_log & DEVKMSG_LOG_MASK_ON)) {
-		if (!___ratelimit(&user->rs, current->comm))
-			return ret;
+		//if (!___ratelimit(&user->rs, current->comm))
+		//	return ret;
 	}
 
 	buf = kmalloc(len+1, GFP_KERNEL);
