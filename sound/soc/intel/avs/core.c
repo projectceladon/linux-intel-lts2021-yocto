@@ -838,6 +838,30 @@ static const struct avs_spec tgl_desc = {
 	.hipc_ctl_offset = CNL_ADSP_REG_HIPCCTL,
 };
 
+static const struct avs_spec adl_desc = {
+        .name = "adl",
+        .min_fw_version = {
+                .major = 10,
+                .minor = 29,
+                .hotfix = 0,
+                .build = 5646,
+        },
+        .dsp_ops = &tgl_dsp_ops,
+        .core_init_mask = 1,
+        .attributes = AVS_PLATATTR_IMR,
+        .sram_base_offset = APL_ADSP_SRAM_BASE_OFFSET,
+        .sram_window_size = APL_ADSP_SRAM_WINDOW_SIZE,
+        .rom_status = APL_ADSP_SRAM_BASE_OFFSET,
+        .hipc_req_offset = CNL_ADSP_REG_HIPCIDR,
+        .hipc_req_ext_offset = CNL_ADSP_REG_HIPCIDD,
+        .hipc_req_busy_mask = CNL_ADSP_HIPCIDR_BUSY,
+        .hipc_ack_offset = CNL_ADSP_REG_HIPCIDA,
+        .hipc_ack_done_mask = CNL_ADSP_HIPCIDA_DONE,
+        .hipc_rsp_offset = CNL_ADSP_REG_HIPCTDR,
+        .hipc_rsp_busy_mask = CNL_ADSP_HIPCTDR_BUSY,
+        .hipc_ctl_offset = CNL_ADSP_REG_HIPCCTL,
+};
+
 static const struct pci_device_id avs_ids[] = {
 	{ PCI_VDEVICE(INTEL, 0x9d70), (unsigned long)&skl_desc }, /* SKL */
 	{ PCI_VDEVICE(INTEL, 0xa170), (unsigned long)&skl_desc }, /* SKL-H */
@@ -862,17 +886,17 @@ static const struct pci_device_id avs_ids[] = {
 	{ PCI_VDEVICE(INTEL, 0xf0c8), (unsigned long)&tgl_desc }, /* TGL-H (CML-S CPU) */
 	{ PCI_VDEVICE(INTEL, 0x4b55), (unsigned long)&tgl_desc }, /* EHL */
 	{ PCI_VDEVICE(INTEL, 0x4b58), (unsigned long)&tgl_desc }, /* EHL */
-	{ PCI_VDEVICE(INTEL, 0x7ad0), (unsigned long)&tgl_desc }, /* ADL-S */
-	{ PCI_VDEVICE(INTEL, 0x51c8), (unsigned long)&tgl_desc }, /* ADL-P */
-	{ PCI_VDEVICE(INTEL, 0x51c9), (unsigned long)&tgl_desc }, /* ADL-PS */
-	{ PCI_VDEVICE(INTEL, 0x51cc), (unsigned long)&tgl_desc }, /* ADL-M */
-	{ PCI_VDEVICE(INTEL, 0x51cd), (unsigned long)&tgl_desc }, /* ADL-PX */
-	{ PCI_VDEVICE(INTEL, 0x54c8), (unsigned long)&tgl_desc }, /* ADL-N */
-	{ PCI_VDEVICE(INTEL, 0x7a50), (unsigned long)&tgl_desc }, /* RPL-S */
-	{ PCI_VDEVICE(INTEL, 0x51ca), (unsigned long)&tgl_desc }, /* RPL-P */
-	{ PCI_VDEVICE(INTEL, 0x51cb), (unsigned long)&tgl_desc }, /* RPL-P */
-	{ PCI_VDEVICE(INTEL, 0x51ce), (unsigned long)&tgl_desc }, /* RPL-M */
-	{ PCI_VDEVICE(INTEL, 0x51cf), (unsigned long)&tgl_desc }, /* RPL-PX */
+	{ PCI_VDEVICE(INTEL, 0x7ad0), (unsigned long)&adl_desc }, /* ADL-S */
+	{ PCI_VDEVICE(INTEL, 0x51c8), (unsigned long)&adl_desc }, /* ADL-P */
+	{ PCI_VDEVICE(INTEL, 0x51c9), (unsigned long)&adl_desc }, /* ADL-PS */
+	{ PCI_VDEVICE(INTEL, 0x51cc), (unsigned long)&adl_desc }, /* ADL-M */
+	{ PCI_VDEVICE(INTEL, 0x51cd), (unsigned long)&adl_desc }, /* ADL-PX */
+	{ PCI_VDEVICE(INTEL, 0x54c8), (unsigned long)&adl_desc }, /* ADL-N */
+	{ PCI_VDEVICE(INTEL, 0x7a50), (unsigned long)&adl_desc }, /* RPL-S */
+	{ PCI_VDEVICE(INTEL, 0x51ca), (unsigned long)&adl_desc }, /* RPL-P */
+	{ PCI_VDEVICE(INTEL, 0x51cb), (unsigned long)&adl_desc }, /* RPL-P */
+	{ PCI_VDEVICE(INTEL, 0x51ce), (unsigned long)&adl_desc }, /* RPL-M */
+	{ PCI_VDEVICE(INTEL, 0x51cf), (unsigned long)&adl_desc }, /* RPL-PX */
 	{ 0 }
 };
 MODULE_DEVICE_TABLE(pci, avs_ids);
