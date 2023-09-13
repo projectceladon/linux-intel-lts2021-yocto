@@ -31,34 +31,17 @@ MODULE_OPTIONS = devices=2
 
 
 .PHONY: all install clean distclean
-.PHONY: install-all install-utils install-man
-.PHONY: modprobe v4l2loopback
 
 # we don't control the .ko file dependencies, as it is done by kernel
 # makefiles. therefore v4l2loopback.ko is a phony target actually
-.PHONY: v4l2loopback.ko utils
+.PHONY: v4l2loopback.ko
 
-all: v4l2loopback.ko utils
+all: v4l2loopback.ko
 
 v4l2loopback: v4l2loopback.ko
 v4l2loopback.ko:
 	@echo "Building v4l2-loopback driver..."
 	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) modules
-
-install-all: install install-utils install-man
-install:
-	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) modules_install
-	@echo ""
-	@echo "SUCCESS (if you got 'SSL errors' above, you can safely ignore them)"
-	@echo ""
-
-install-utils: utils/v4l2loopback-ctl
-	$(INSTALL_DIR) "$(DESTDIR)$(BINDIR)"
-	$(INSTALL_PROGRAM) $< "$(DESTDIR)$(BINDIR)"
-
-install-man: man/v4l2loopback-ctl.1
-	$(INSTALL_DIR) "$(DESTDIR)$(MAN1DIR)"
-	$(INSTALL_DATA) $< "$(DESTDIR)$(MAN1DIR)"
 
 clean:
 	rm -f *~
@@ -68,21 +51,6 @@ clean:
 
 distclean: clean
 	rm -f man/v4l2loopback-ctl.1
-
-modprobe: v4l2loopback.ko
-	chmod a+r v4l2loopback.ko
-	sudo modprobe videodev
-	-sudo rmmod v4l2loopback
-	sudo insmod ./v4l2loopback.ko $(MODULE_OPTIONS)
-
-man/v4l2loopback-ctl.1: utils/v4l2loopback-ctl
-	help2man -N --name "control v4l2 loopback devices" \
-		--no-discard-stderr --help-option=-h --version-option=-v \
-		$^ > $@
-
-utils: utils/v4l2loopback-ctl
-utils/v4l2loopback-ctl: utils/v4l2loopback-ctl.c
-	$(MAKE) -C utils
 
 .clang-format:
 	curl "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/.clang-format" > $@
