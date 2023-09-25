@@ -36,6 +36,11 @@
 #endif
 #include <media/v4l2-event.h>
 
+#include <linux/completion.h>
+#include <linux/netlink.h>
+#include <linux/skbuff.h>
+#include <net/sock.h>
+
 #include <linux/miscdevice.h>
 #include "v4l2loopback.h"
 
@@ -61,7 +66,7 @@ MODULE_AUTHOR("Vasily Levin, "
 	      "Stefan Diewald,"
 	      "Anton Novikov"
 	      "et al.");
-MODULE_VERSION("0.12.5");	      
+MODULE_VERSION("0.12.5");
 MODULE_LICENSE("GPL");
 
 /*
@@ -209,8 +214,16 @@ typedef unsigned __poll_t;
 
 /* module parameters */
 static int debug = 0;
+static int broadcast = 0;
+static int nlgroup = 22;
+
 module_param(debug, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(debug, "debugging level (higher values == more verbose)");
+module_param(broadcast, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(debug, "set broadcast=1 to enable netlink message send/receive");
+module_param(nlgroup, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(debug, "set nlgroup for netlink group, 22 by default");
+
 
 #define V4L2LOOPBACK_DEFAULT_MAX_BUFFERS 2
 static int max_buffers = V4L2LOOPBACK_DEFAULT_MAX_BUFFERS;
@@ -460,6 +473,111 @@ struct v4l2l_format {
 #define FORMAT_FLAGS_COMPRESSED 0x02
 
 #include "v4l2loopback_formats.h"
+
+struct sock *nl_sk = NULL;
+#define PROMPT_OPEN "open&"
+#define PROMPT_CLOSE "close&"
+#define PROMPT_STREAMON "streamon&"
+#define PROMPT_STREAMOFF "streamoff&"
+
+#define RET_BUSY -2
+#define RET_UNACCESSIBLE -1
+#define RET_NOSTATUS 0
+#define RET_OPENDONE 1
+#define RET_CLOSEDONE 2
+#define RET_STREAMOFFDONE 3
+#define RET_STREAMONDONE 4
+
+static int return_status = RET_NOSTATUS;
+
+DECLARE_COMPLETION(SyncCompl);
+
+void nl_recv_msg(struct sk_buff *skb) {
+	struct nlmsghdr *nlh = nlmsg_hdr(skb);
+	char* ret_str = (char*)nlmsg_data(nlh);
+	dprintk(KERN_INFO "Netlink received msg from userspace echo:%s\n", (char *)nlmsg_data(nlh));
+
+	if (ret_str == NULL) {
+		return_status = RET_NOSTATUS;
+	} else {
+		if (strncmp(ret_str, "OpenDone", strlen("OpenDone")) == 0) {
+			return_status = RET_OPENDONE;
+		} else if (strncmp(ret_str, "CloseDone", strlen("CloseDone")) == 0) {
+			return_status = RET_CLOSEDONE;
+		} else if (strncmp(ret_str, "StreamoffDone", strlen("StreamoffDone")) == 0) {
+			return_status = RET_STREAMOFFDONE;
+		} else if (strncmp(ret_str, "StreamonDone", strlen("StreamonDoen")) == 0) {
+			return_status = RET_STREAMONDONE;
+		} else if (strncmp(ret_str, "DeviceBusy", strlen("DeviceBusy")) == 0) {
+			return_status = RET_BUSY;
+		} else {
+			return_status = RET_UNACCESSIBLE;
+		}
+	}
+	complete(&SyncCompl);
+}
+
+void nl_send_msg(char *msg) {
+	struct sk_buff *skb_out;
+	struct nlmsghdr *nlh;
+	int res;
+	int msg_size;
+
+	char send_msg[48];
+	unsigned long timeout;
+	unsigned long ret_compl;
+
+	dprintk(KERN_ALERT "THREAD NAME = %s\n", current->comm);
+	if (strncmp(current->comm, "memcheck-amd64-", strlen(current->comm)) == 0) {
+		return_status = RET_OPENDONE;
+		return;
+	}
+	memset(send_msg, 0, sizeof(send_msg));
+	sprintf(send_msg, "%d&%s&%s", current->pid, current->comm, msg);
+	msg_size = strlen(send_msg) + 1;
+
+	skb_out = nlmsg_new(
+		NLMSG_ALIGN(msg_size), // @payload: size of the message payload
+		GFP_NOWAIT             // @flags: the type of memory to allocate.
+	);
+	if (!skb_out) {
+		printk(KERN_ERR "Failed to allocate new skb\n");
+		return;
+	}
+
+	nlh = nlmsg_put(
+		skb_out,    // @skb: socket buffer to store message in
+		0,          // @portid: netlink PORTID of requesting application
+		0,          // @seq: sequence number of message
+		NLMSG_DONE, // @type: message type
+		msg_size,   // @payload: length of message payload
+		0           // @flags: message flags
+	);
+
+	memcpy(nlmsg_data(nlh), send_msg, msg_size);
+	res = nlmsg_multicast(
+		nl_sk,     // @sk: netlink socket to spread messages to
+		skb_out,   // @skb: netlink message as socket buffer
+		0,         // @portid: own netlink portid to avoid sending to yourself
+		nlgroup,    // @group: multicast group id
+		GFP_NOWAIT // @flags: allocation flags
+	);
+
+	if (res < 0) {
+		printk(KERN_INFO "V4L2Loopback error while sending to user: %d\n", res);
+	} else {
+		dprintk(KERN_INFO "Netlink sent msg to userspace :%s %d\n", send_msg, msg_size);
+		timeout = msecs_to_jiffies(3000);
+		ret_compl = wait_for_completion_timeout(&SyncCompl, timeout);
+		if (ret_compl == 0) {
+			dprintk(KERN_INFO "wait for completion failed with timeout: %s\n", send_msg);
+			return;
+		}
+	}
+
+	return;
+}
+
 
 static const unsigned int FORMATS = ARRAY_SIZE(formats);
 
@@ -1633,7 +1751,8 @@ static int vidioc_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 			v4l2l_get_timestamp(&b->buffer);
 		else
 			b->buffer.timestamp = buf->timestamp;
-		b->buffer.bytesused = buf->bytesused;
+		b->buffer.bytesused = dev->pix_format.sizeimage;
+
 		set_done(b);
 		buffer_written(dev, b);
 
@@ -1994,10 +2113,35 @@ static int v4l2_loopback_open(struct file *file)
 {
 	struct v4l2_loopback_device *dev;
 	struct v4l2_loopback_opener *opener;
+	char msg[128];
 	MARK();
 	dev = v4l2loopback_getdevice(file);
-	if (dev->open_count.counter >= dev->max_openers)
+
+	if (broadcast == 1) {
+		memset(msg, 0, sizeof(msg));
+		strcpy(msg, PROMPT_OPEN);
+		strcpy(msg + strlen(PROMPT_OPEN), dev->card_label);
+		nl_send_msg(msg);
+
+		if (return_status == RET_BUSY || return_status == RET_UNACCESSIBLE) {
+			dprintk(KERN_ERR "RET_BUSY||RET_UNACCESSIBLE %d\n", return_status);
+			return_status = RET_NOSTATUS;
+			return -EBUSY;
+		}
+
+		if (return_status != RET_OPENDONE && return_status != RET_NOSTATUS) {
+			dprintk(KERN_ERR "RET_OPEN Failed.\n");
+			return_status = RET_NOSTATUS;
+			return -EINVAL;
+		}
+
+		return_status = RET_NOSTATUS;
+	}
+
+	if (dev->open_count.counter >= dev->max_openers) {
+		dprintk(KERN_ERR "Exceed max_openers.\n");
 		return -EBUSY;
+	}
 	/* kfree on close */
 	opener = kzalloc(sizeof(*opener), GFP_KERNEL);
 	if (opener == NULL)
@@ -2030,6 +2174,7 @@ static int v4l2_loopback_close(struct file *file)
 	struct v4l2_loopback_opener *opener;
 	struct v4l2_loopback_device *dev;
 	int iswriter = 0;
+	char msg[128];
 	MARK();
 
 	opener = fh_to_opener(file->private_data);
@@ -2052,6 +2197,14 @@ static int v4l2_loopback_close(struct file *file)
 	if (iswriter) {
 		dev->ready_for_output = 1;
 	}
+
+	if (broadcast == 1) {
+		memset(msg, 0, sizeof(msg));
+		strcpy(msg, PROMPT_CLOSE);
+		strcpy(msg + strlen(PROMPT_CLOSE), dev->card_label);
+		nl_send_msg(msg);
+	}
+
 	MARK();
 	return 0;
 }
@@ -2123,6 +2276,8 @@ static ssize_t v4l2_loopback_write(struct file *file, const char __user *buf,
 	buffer_written(dev, &dev->buffers[write_index]);
 	wake_up_all(&dev->read_event);
 	dprintkrw("leave v4l2_loopback_write()\n");
+
+	dev->ready_for_output = 1;
 	return count;
 }
 
@@ -2788,11 +2943,22 @@ static int __init v4l2loopback_init_module(void)
 {
 	int err;
 	int i;
+	struct netlink_kernel_cfg cfg = {
+		.input = nl_recv_msg,
+	};
+
 	MARK();
+
+	printk(KERN_INFO "Init NetLink of V4l2Loopback.\n");
+	nl_sk = netlink_kernel_create(&init_net, NETLINK_USERSOCK, &cfg);
+	if (!nl_sk) {
+		printk(KERN_ALERT "Error creating socket.\n");
+		return -1;
+	}
 
 	err = misc_register(&v4l2loopback_misc);
 	if (err < 0)
-		return err;
+		goto error_misc;
 
 	if (devices < 0) {
 		devices = 1;
@@ -2875,6 +3041,11 @@ static int __init v4l2loopback_init_module(void)
 	return 0;
 error:
 	misc_deregister(&v4l2loopback_misc);
+
+error_misc:
+	if (nl_sk)
+		netlink_kernel_release(nl_sk);
+
 	return err;
 }
 
@@ -2887,6 +3058,9 @@ static void v4l2loopback_cleanup_module(void)
 	/* and get rid of /dev/v4l2loopback */
 	misc_deregister(&v4l2loopback_misc);
 	dprintk("module removed\n");
+
+	dprintk("Release NetLink of V4l2Loopback\n");
+	netlink_kernel_release(nl_sk);
 }
 #endif
 
