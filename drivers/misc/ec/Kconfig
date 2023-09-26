@@ -1,0 +1,11 @@
+#
+# Intel EC device
+#
+
+config INTEL_EC
+        tristate "Intel Embedded Controller"
+        help
+	  This adds an option to enable the Intel Embedded Controller driver. The embedded
+	  controller is an essential component in modern mobile, ultra-mobile and embedded
+	  computer systems. An efficient EC sub-system enables energy-conscious designs to
+	  obtain dramatic power savings.
