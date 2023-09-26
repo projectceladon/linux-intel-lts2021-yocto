@@ -517,4 +517,5 @@ source "drivers/misc/pvpanic/Kconfig"
 source "drivers/misc/vpumgr/Kconfig"
 source "drivers/misc/Gpio-asm28xx/Kconfig"
 source "drivers/misc/gna/Kconfig"
+source "drivers/misc/ec/Kconfig"
 endmenu
