@@ -22,6 +22,11 @@
 #include <linux/of_device.h>
 #include <linux/acpi.h>
 
+#include <linux/gpio.h>
+#include <linux/irq.h>
+#include <linux/poll.h>
+#include <linux/interrupt.h>
+#include <linux/gpio/consumer.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spidev.h>
 
@@ -43,6 +48,7 @@
  */
 #define SPIDEV_MAJOR			153	/* assigned */
 #define N_SPI_MINORS			32	/* ... up to 256 */
+#define HANDSHAKE_GPIO			1005	/* GPIO BSSB_LS1_TX for Board */
 
 static DECLARE_BITMAP(minors, N_SPI_MINORS);
 
@@ -77,14 +83,32 @@ struct spidev_data {
 	u8			*tx_buffer;
 	u8			*rx_buffer;
 	u32			speed_hz;
+	/* GPIO for Slave Initial Handshake (used for edge triggered emulation) */
+	int irq_gpio;
+	/* the irq num of handshake GPIO */
+	int irq_num_gpio;
+	bool  handshake;
 };
 
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 
+static DECLARE_WAIT_QUEUE_HEAD(poll_waitq);
 static unsigned bufsiz = 4096;
+static int gpio_allocated = 0;
 module_param(bufsiz, uint, S_IRUGO);
 MODULE_PARM_DESC(bufsiz, "data bytes in biggest supported SPI message");
+
+static irqreturn_t handshake_irq(int irq, void *id) {
+	struct spidev_data *spidev = id;
+	unsigned long flags;
+
+	spin_lock_irqsave(&spidev->spi_lock, flags);
+	spidev->handshake = true;
+	spin_unlock_irqrestore(&spidev->spi_lock, flags);
+	wake_up_interruptible(&poll_waitq);
+	return IRQ_HANDLED;
+}
 
 /*-------------------------------------------------------------------------*/
 
@@ -611,6 +635,22 @@ err_find_dev:
 	return status;
 }
 
+static unsigned int spidev_poll(struct file *filp, struct poll_table_struct *wait)
+{
+	struct spidev_data	*spidev;
+	__poll_t mask = 0;
+	spidev = filp->private_data;
+	pr_info("SPIDEV Poll function:%d\n",spidev->handshake);
+	poll_wait(filp, &poll_waitq, wait);
+	if (spidev->handshake) {
+		mask |= ( POLLIN | POLLRDNORM );
+		spin_lock_irq(&spidev->spi_lock);
+		spidev->handshake = false;
+		spin_unlock_irq(&spidev->spi_lock);
+	}
+	return mask;
+}
+
 static int spidev_release(struct inode *inode, struct file *filp)
 {
 	struct spidev_data	*spidev;
@@ -660,6 +700,7 @@ static const struct file_operations spidev_fops = {
 	.unlocked_ioctl = spidev_ioctl,
 	.compat_ioctl = spidev_compat_ioctl,
 	.open =		spidev_open,
+	.poll =		spidev_poll,
 	.release =	spidev_release,
 	.llseek =	no_llseek,
 };
@@ -706,6 +747,7 @@ MODULE_DEVICE_TABLE(of, spidev_dt_ids);
 /* Dummy SPI devices not to be used in production systems */
 #define SPIDEV_ACPI_DUMMY	1
 
+/* only support SPT0001, ignore others SPIDEV */
 static const struct acpi_device_id spidev_acpi_ids[] = {
 	/*
 	 * The ACPI SPT000* devices are only meant for development and
@@ -794,11 +836,64 @@ static int spidev_probe(struct spi_device *spi)
 
 	spidev->speed_hz = spi->max_speed_hz;
 
+	spidev->irq_gpio = HANDSHAKE_GPIO;
 	if (status == 0)
 		spi_set_drvdata(spi, spidev);
-	else
+	else {
 		kfree(spidev);
+		return status;
+	}
 
+	if (gpio_allocated > 0) {
+		dev_err(&spi->dev, "gpio for irq already req , can not be used again\n");
+		return status;
+	} else {
+		dev_info(&spi->dev, "start req gpio set\n");
+                gpio_allocated = 1;
+	}
+
+	status = gpio_request(spidev->irq_gpio, "GPIO_E21");
+	if (status) {
+		dev_err(&spi->dev,
+                "failed to request GPIO%d", spidev->irq_gpio);
+		goto err_get_gpio;
+	}
+	dev_info(&spi->dev, "end req gpio\n");
+
+	status = gpio_direction_input(spidev->irq_gpio);
+	if (status) {
+		dev_err(&spi->dev,
+                "failed to set direction GPIO%d", spidev->irq_gpio);
+		goto err_get_gpio;
+	}
+
+	dev_info(&spi->dev, "set gpio input\n");
+	spidev->irq_num_gpio = gpio_to_irq(spidev->irq_gpio);
+	if (spidev->irq_num_gpio < 0) {
+		dev_err(&spi->dev,
+                "failed to get irq from GPIO%d", spidev->irq_gpio);
+		status = spidev->irq_num_gpio;
+		goto err_irq;
+	}
+	dev_info(&spi->dev, "gpio irq num is %d\n", spidev->irq_num_gpio);
+
+	status = request_any_context_irq(spidev->irq_num_gpio,
+			handshake_irq,
+			IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+			"SPIDEV_HS_IRQ",
+			spidev);
+	if (status < 0) {
+		dev_err(&spi->dev,
+                "failed to request irq from GPIO%d", spidev->irq_gpio);
+		goto err_irq;
+	}
+
+	return status;
+
+err_irq:
+	free_irq(spidev->irq_num_gpio, spidev);
+err_get_gpio:
+	gpio_free(spidev->irq_gpio);
 	return status;
 }
 
