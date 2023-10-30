@@ -963,6 +963,38 @@ static void rt5640_pmu_depop(struct snd_soc_component *component)
 		RT5640_HP_CP_PD | RT5640_HP_SG_EN);
 	regmap_update_bits(rt5640->regmap, RT5640_PR_BASE +
 		RT5640_CHPUMP_INT_REG1, 0x0700, 0x0400);
+
+        msleep(5);
+        regmap_update_bits(rt5640->regmap, RT5640_PR_BASE + RT5640_HP_VOL,
+                RT5640_L_MUTE | RT5640_R_MUTE, 0);
+        msleep(65);
+}
+
+static void rt5640_pmd_depop(struct snd_soc_component *component)
+{
+	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
+
+	regmap_update_bits(rt5640->regmap, RT5640_DEPOP_M3,
+		RT5640_CP_FQ1_MASK | RT5640_CP_FQ2_MASK | RT5640_CP_FQ3_MASK,
+		(RT5640_CP_FQ_96_KHZ << RT5640_CP_FQ1_SFT) |
+		(RT5640_CP_FQ_12_KHZ << RT5640_CP_FQ2_SFT) |
+		(RT5640_CP_FQ_96_KHZ << RT5640_CP_FQ3_SFT));
+	regmap_write(rt5640->regmap, RT5640_PR_BASE +
+		RT5640_MAMP_INT_REG2, 0x7c00);
+
+	regmap_update_bits(rt5640->regmap, RT5640_HP_VOL,
+		RT5640_L_MUTE | RT5640_R_MUTE,
+		RT5640_L_MUTE | RT5640_R_MUTE);
+	msleep(50);
+	regmap_update_bits(rt5640->regmap, RT5640_DEPOP_M1,
+		RT5640_HP_CB_MASK, RT5640_HP_CB_PD);
+	msleep(30);
+	regmap_update_bits(rt5640->regmap, RT5640_PWR_ANLG1,
+		RT5640_PWR_HP_L | RT5640_PWR_HP_R | RT5640_PWR_HA,
+		0);
+	regmap_update_bits(rt5640->regmap, RT5640_DEPOP_M2,
+		RT5640_DEPOP_MASK | RT5640_DIG_DP_MASK,
+		RT5640_DEPOP_AUTO | RT5640_DIG_DP_EN);
 }
 
 static int rt5640_hp_event(struct snd_soc_dapm_widget *w,
@@ -978,6 +1010,7 @@ static int rt5640_hp_event(struct snd_soc_dapm_widget *w,
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
+		rt5640_pmd_depop(component);
 		rt5640->hp_mute = true;
 		msleep(70);
 		break;
