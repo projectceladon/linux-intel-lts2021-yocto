@@ -857,7 +857,6 @@ static int virtio_camera_probe(struct virtio_device *vdev)
 {
 	struct virtio_camera *vcam;
 	int err, i;
-	#define VIRTIO_CAMERA_NUMQ 8
 
 	vcam = devm_kzalloc(&vdev->dev, sizeof(*vcam), GFP_KERNEL);
 	if (!vcam)
@@ -867,8 +866,12 @@ static int virtio_camera_probe(struct virtio_device *vdev)
 
 	virtio_cread_bytes(vdev, 0, &vcam->config, sizeof(vcam->config));
 
-	vcam->config.num_virtual_cameras = VIRTIO_CAMERA_NUMQ;
-	for (i = 0; i < VIRTIO_CAMERA_NUMQ; i++)
+	if (vcam->config.num_virtual_cameras > ARRAY_SIZE(vcam->config.nr_per_virtual_camera)) {
+		pr_err("%s: nr cameras too large %d", __func__, vcam->config.num_virtual_cameras);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < vcam->config.num_virtual_cameras; i++)
 		vcam->config.nr_per_virtual_camera[i] = 1;
 
 	err = virtio_camera_setup_vqs(vdev, vcam);
