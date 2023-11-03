@@ -1062,20 +1062,12 @@ failed_out:
 
 static int max96722_poc_enable(struct max96722_priv *priv, bool enable)
 {
-	int ret;
 	int i;
 
 	for (i = 0; i < priv->platform_data->subdev_num; i++) {
 		struct max96722_subdev_info *info = &priv->platform_data->subdev_info[i];
 
 		if (info->power_gpio != -1) {
-			ret = devm_gpio_request_one(&priv->client->dev,
-					info->power_gpio, GPIOF_OUT_INIT_LOW, "poc gpio");
-			if (ret) {
-				dev_err(&priv->client->dev,
-						"Failed to request power gpio %d\n", ret);
-				return ret;
-			}
 			if (enable)
 				gpio_set_value(info->power_gpio, 0);
 			else
@@ -1231,6 +1223,7 @@ static int max96722_probe(struct i2c_client *client)
 {
 	struct max96722_priv *priv;
 	int ret;
+	int i;
 
 	priv = devm_kzalloc(&client->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -1304,6 +1297,19 @@ static int max96722_probe(struct i2c_client *client)
 
 	dev_info(&client->dev, "errb irq %x, lock irq %x\n",
 			priv->errb_int, priv->lock_int);
+
+	for (i = 0; i < priv->platform_data->subdev_num; i++) {
+		struct max96722_subdev_info *info = &priv->platform_data->subdev_info[i];
+
+		if (info->power_gpio != -1) {
+			ret = devm_gpio_request_one(&client->dev, info->power_gpio,
+					GPIOF_OUT_INIT_LOW, "poc gpio");
+			if (ret) {
+				dev_err(&client->dev, "Failed to request power gpio %d\n", ret);
+				return ret;
+			}
+		}
+	}
 
 	mutex_init(&priv->mutex);
 

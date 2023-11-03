@@ -818,7 +818,7 @@ static struct max96722_platform_data max96722_pdata = {
 		IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 };
 
-static struct ipu_isys_subdev_info max96722_sd = {
+static struct ipu_isys_subdev_info max96722_sd_1 = {
 	.csi2 = &max96722_csi2_cfg,
 	.i2c = {
 		.board_info = {
@@ -827,6 +827,18 @@ static struct ipu_isys_subdev_info max96722_sd = {
 			.platform_data = &max96722_pdata,
 		},
 		.i2c_adapter_bdf = "0000:00:15.1",
+	},
+};
+
+static struct ipu_isys_subdev_info max96722_sd_2 = {
+	.csi2 = &max96722_csi2_cfg,
+	.i2c = {
+		.board_info = {
+			.type = "max96722",
+			.addr = 0x29,
+			.platform_data = &max96722_pdata,
+		},
+		.i2c_adapter_bdf = "0000:00:19.0",
 	},
 };
 #endif
@@ -856,7 +868,8 @@ static struct ipu_isys_subdev_pdata pdata = {
 		&d4xx_sd_3,
 #endif
 #if IS_ENABLED(CONFIG_VIDEO_MAX96722)
-		&max96722_sd,
+		&max96722_sd_1,
+		&max96722_sd_2,
 #endif
 		NULL,
 	},
