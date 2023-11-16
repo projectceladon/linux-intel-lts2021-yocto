@@ -40,6 +40,10 @@
 #include <linux/vga_switcheroo.h>
 #include <linux/vt.h>
 
+#if IS_ENABLED(CONFIG_DRM_I915_MEMTRACK)
+#include <linux/pid.h>
+#endif
+
 #include <drm/drm_aperture.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_ioctl.h>
@@ -1148,6 +1152,12 @@ static void i915_driver_postclose(struct drm_device *dev, struct drm_file *file)
 	i915_drm_client_put(file_priv->client);
 
 	kfree_rcu(file_priv, rcu);
+
+#if IS_ENABLED(CONFIG_DRM_I915_MEMTRACK)
+	i915_gem_remove_sysfs_file_entry(dev, file);
+	put_pid(file_priv->tgid);
+	kfree(file_priv->process_name);
+#endif
 
 	/* Catch up with all the deferred frees from "this" client */
 	i915_gem_flush_free_objects(to_i915(dev));

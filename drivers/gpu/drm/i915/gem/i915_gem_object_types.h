@@ -488,6 +488,10 @@ struct drm_i915_gem_object {
 	 */
 	unsigned int cache_dirty:1;
 
+#if IS_ENABLED(CONFIG_DRM_I915_MEMTRACK)
+	unsigned int has_backing_pages : 1;
+#endif
+
 	/**
 	 * @read_domains: Read memory domains.
 	 *
@@ -626,6 +630,10 @@ struct drm_i915_gem_object {
 		struct drm_i915_gem_object *backup;
 		bool created:1;
 	} ttm;
+
+#if IS_ENABLED(CONFIG_DRM_I915_MEMTRACK)
+	struct list_head pid_info;
+#endif
 
 	/*
 	 * Record which PXP key instance this object was created against (if
