@@ -179,9 +179,9 @@ void iwl_mvm_update_changed_regdom(struct iwl_mvm *mvm)
 struct ieee80211_regdomain *iwl_mvm_get_current_regdomain(struct iwl_mvm *mvm,
 							  bool *changed)
 {
-	return iwl_mvm_get_regdomain(mvm->hw->wiphy, "ZZ",
+	return iwl_mvm_get_regdomain(mvm->hw->wiphy, "CN",
 				     iwl_mvm_is_wifi_mcc_supported(mvm) ?
-				     MCC_SOURCE_GET_CURRENT :
+				     MCC_SOURCE_BIOS :
 				     MCC_SOURCE_OLD_FW, changed);
 }
 
