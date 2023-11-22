@@ -52,17 +52,28 @@ static int mv88q2xxx_tx_enable(struct phy_device *phydev)
 
 static int mv88q2xxx_tx_disable(struct phy_device *phydev)
 {
-	return phy_clear_bits_mmd(phydev, 3 ,0x8000, 0x8);
+	return phy_set_bits_mmd(phydev, 3 ,0x8000, 0x8);
 }
 
 static int mv88q2xxx_resume(struct phy_device *phydev)
 {
+	phy_clear_bits_mmd(phydev, 3 ,0x801c, 0x1);
+	phy_clear_bits_mmd(phydev, 1 ,0x0, 0x800);
+	phy_clear_bits_mmd(phydev, 1 ,0x900, 0x800);
+	phy_clear_bits_mmd(phydev, 3 ,0x0, 0x800);
+
 	return mv88q2xxx_tx_enable(phydev);
 }
 
 static int mv88q2xxx_suspend(struct phy_device *phydev)
 {
-	return mv88q2xxx_tx_disable(phydev);
+	int ret = mv88q2xxx_tx_disable(phydev);
+	phy_set_bits_mmd(phydev, 3 ,0x0, 0x800);
+	phy_set_bits_mmd(phydev, 1 ,0x900, 0x800);
+	phy_set_bits_mmd(phydev, 1 ,0x0, 0x800);
+	phy_set_bits_mmd(phydev, 3 ,0x801c, 0x1);
+
+	return ret;
 }
 static int mv88q2xxx_soft_reset(struct phy_device *phydev)
 {
@@ -207,6 +218,9 @@ static int mv88q2xxx_config_init(struct phy_device *phydev)
 	setup_master_slave(phydev);
 	//reset
 	mv88q2xxx_soft_reset(phydev);
+
+	// disable remote wake up
+	phy_set_bits_mmd(phydev, 3 ,0x801d, 0x800);
 
 	return 0;
 }
