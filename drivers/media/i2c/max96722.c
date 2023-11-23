@@ -1069,9 +1069,9 @@ static int max96722_poc_enable(struct max96722_priv *priv, bool enable)
 
 		if (info->power_gpio != -1) {
 			if (enable)
-				gpio_set_value(info->power_gpio, 0);
+				gpio_set_value(info->power_gpio, info->power_val);
 			else
-				gpio_set_value(info->power_gpio, 1);
+				gpio_set_value(info->power_gpio, !!!(info->power_val));
 		}
 	}
 
