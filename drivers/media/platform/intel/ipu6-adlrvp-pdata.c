@@ -783,6 +783,7 @@ static struct max96722_subdev_info max96722_subdevs[] = {
 		.rx_port = 0,
 		/* GPP_B23	- 0 + 664*/
 		.power_gpio = 687,
+		.power_val = 1,
 		.phy_i2c_addr = 0x42,
 		.alias_addr = 0x43,
 		.ser_type = MAX_SER_96717F,

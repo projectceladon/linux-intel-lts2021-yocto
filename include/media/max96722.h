@@ -29,6 +29,7 @@ struct max96722_subdev_info {
 	struct i2c_board_info board_info;
 	unsigned int rx_port;
 	unsigned int power_gpio;
+	unsigned int power_val;
 	unsigned int phy_i2c_addr;
 	unsigned int alias_addr;
 	unsigned int ser_type;
