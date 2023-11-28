@@ -220,7 +220,7 @@ static int mv88q2xxx_config_init(struct phy_device *phydev)
 	mv88q2xxx_soft_reset(phydev);
 
 	// disable remote wake up
-	phy_set_bits_mmd(phydev, 3 ,0x801d, 0x800);
+	phy_set_bits_mmd(phydev, 3 ,0x801d, 0x8800);
 
 	return 0;
 }
