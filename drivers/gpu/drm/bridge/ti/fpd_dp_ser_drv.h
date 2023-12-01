@@ -33,14 +33,14 @@
 #include <linux/workqueue.h>
 #include <drm/drm_modes.h>
 
-#define FPD_DP_SER_TX_ADD                  0x0C
+#define FPD_DP_SER_TX_ADD                  0x14
 #define FPD_DP_SER_RX_ADD_A                0x30
 #define FPD_DP_ARRAY_SIZE                  4
 
 #define DS90UB983                           0
 #define DS90UB944A                          1
 
-#define NUM_DP_DEVICE                       2
+#define NUM_DEVICE                          2
 #define ADAPTER_PP_DEV_NAME                "0000:00:15.1"
 
 enum fdp_dp_ser_strap_rate {
@@ -52,10 +52,12 @@ enum fdp_dp_ser_strap_rate {
 };
 
 struct fpd_dp_ser_priv {
+   struct device *dev;
+   struct i2c_adapter *i2c_adap;
 	u8 FPDConf;
 	u8 FPD4_Strap_Rate_P0;
 	u8 FPD4_Strap_Rate_P1;
-	struct i2c_client *priv_dp_client[NUM_DP_DEVICE];
+	struct i2c_client *priv_dp_client[NUM_DEVICE];
 	struct delayed_work delay_work;
 	struct workqueue_struct *wq;
 	int count;
