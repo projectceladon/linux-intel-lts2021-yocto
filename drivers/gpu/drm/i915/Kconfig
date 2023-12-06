@@ -153,6 +153,11 @@ config DRM_I915_PXP
 	  protected session and manage the status of the alive software session,
 	  as well as its life cycle.
 
+config DRM_I915_MCU_BACKLIGHT
+	bool "Enable mcu backlight"
+	depends on DRM_I915
+	default y
+
 menu "drm/i915 Debugging"
 depends on DRM_I915
 depends on EXPERT

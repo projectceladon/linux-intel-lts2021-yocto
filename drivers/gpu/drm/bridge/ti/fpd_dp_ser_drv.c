@@ -57,6 +57,7 @@
 
 static struct platform_device *pdev;
 struct fpd_dp_ser_priv *fpd_dp_priv;
+struct i2c_adapter *i2c_adap_mcu;
 
 static struct i2c_board_info fpd_dp_i2c_board_info[] = {
 	{
@@ -122,6 +123,36 @@ bool fpd_dp_ser_write_reg(struct i2c_client *client, unsigned int reg_addr, u8 v
 	return true;
 }
 
+bool fpd_dp_mcu_write_reg(struct i2c_client *client, unsigned int reg_addr, u32 val)
+{
+	int ret = 0;
+	struct i2c_msg msg;
+	u8 buf[2];
+
+    buf[0] = reg_addr & 0xff;
+    buf[1] = 0x00;
+    buf[2] = 0x03;
+    buf[3] = (val & 0xff0000) >> 16;
+    buf[4] = (val & 0xff00) >> 8;
+    buf[5] = val & 0xff;
+
+    msg.addr = client->addr;
+    msg.flags = 0;
+    msg.buf = &buf[0];
+    msg.len = 6;
+
+    ret = i2c_transfer(client->adapter, &msg, 1);
+
+	if (ret < 0) {
+		pr_debug("[FPD_DP] [-%s-%s-%d-], fail client->addr=0x%02x, reg_addr=0x%02x, val=0x%02x\n",
+				__FILE__, __func__, __LINE__, client->addr, reg_addr, val);
+		return false;
+	}
+	pr_debug("[FPD_DP] WIB 0x%02x: 0x%02x 0x%02x OK\n",
+			client->addr, reg_addr, val);
+	return true;
+}
+
 /*
  * TODO not used
  * this code is for check i2c return val
@@ -175,6 +206,14 @@ void  fpd_dp_ser_set_up_variables(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x70, FPD_DP_SER_RX_ADD_A);
 	fpd_dp_ser_write_reg(client, 0x78, FPD_DP_SER_RX_ADD_A);
 	fpd_dp_ser_write_reg(client, 0x88, 0x0);
+}
+
+void  fpd_dp_ser_set_up_mcu(struct i2c_client *client)
+{
+	fpd_dp_ser_write_reg(client, 0x70, FPD_DP_SER_MCU_ADD << 1);
+	fpd_dp_ser_write_reg(client, 0x78, FPD_DP_SER_MCU_ADD << 1);
+	fpd_dp_ser_write_reg(client, 0x88, 0x0);
+    fpd_dp_ser_write_reg(client, 0x07, 0x88);
 }
 
 /**
@@ -1188,6 +1227,8 @@ int fpd_dp_ser_init(void)
 {
 	fpd_dp_ser_enable();
 
+    fpd_dp_ser_set_up_mcu(fpd_dp_priv->priv_dp_client[0]);
+
 	return 0;
 }
 
@@ -1219,6 +1260,8 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 	}
 	i2c_put_adapter(i2c_adap);
 	priv->i2c_adap = i2c_adap;
+
+    i2c_adap_mcu = i2c_adap;
 
 	priv->priv_dp_client[0] = i2c_new_dummy_device(i2c_adap, fpd_dp_i2c_board_info[0].addr);
 	i2c_set_clientdata(priv->priv_dp_client[0], priv);
@@ -1389,6 +1432,8 @@ void  __exit fpd_dp_ser_module_exit(void)
 	platform_device_unregister(pdev);
 	platform_driver_unregister(&fpd_dp_ser_driver);
 }
+
+EXPORT_SYMBOL(i2c_adap_mcu);
 
 #ifdef MODULE
 module_init(fpd_dp_ser_module_init);
