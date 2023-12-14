@@ -624,6 +624,7 @@ static int __i915_get_drm_clients_info(struct drm_i915_error_state_buf *m,
 		m,
 		"\n\n  pid   Total  Shared  Priv   Purgeable  Alloced  SharedPHYsize   SharedPHYprop    PrivPHYsize   PurgeablePHYsize   process\n");
 
+	mutex_lock(&dev->filelist_mutex);
 	list_for_each_entry (file, &dev->filelist, lhead) {
 		struct pid *tgid;
 		struct drm_i915_file_private *file_priv = file->driver_priv;
@@ -670,6 +671,7 @@ static int __i915_get_drm_clients_info(struct drm_i915_error_state_buf *m,
 		if (ret)
 			break;
 	}
+	mutex_unlock(&dev->filelist_mutex);
 
 	list_for_each_entry_safe (pid_entry, temp_entry, &per_pid_stats, head) {
 		if (list_empty(&sorted_pid_stats)) {
@@ -787,6 +789,7 @@ static int __i915_gem_get_obj_info(struct drm_i915_error_state_buf *m,
         */
 	err_printf(m, "%" SPACES_STR(NUM_SPACES) "s\n", " ");
 
+	mutex_lock(&dev->filelist_mutex);
 	list_for_each_entry (file, &dev->filelist, lhead) {
 		struct drm_i915_file_private *file_priv = file->driver_priv;
 		struct get_obj_stats_buf obj_stat_buf;
@@ -805,6 +808,7 @@ static int __i915_gem_get_obj_info(struct drm_i915_error_state_buf *m,
 		if (ret)
 			break;
 	}
+	mutex_unlock(&dev->filelist_mutex);
 
 	if (file_priv_reqd) {
 		int space_remaining;

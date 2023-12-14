@@ -403,18 +403,18 @@ int i915_gem_create_sysfs_file_entry(struct drm_device *dev,
         * bin attribute into the new file priv. Otherwise allocate a new
         * copy of bin attribute, and create its corresponding sysfs file.
         */
-	mutex_lock(&dev->struct_mutex);
+	mutex_lock(&dev->filelist_mutex);
 	list_for_each_entry (file_local, &dev->filelist, lhead) {
 		struct drm_i915_file_private *file_priv_local =
 			file_local->driver_priv;
 
 		if (file_priv->tgid == file_priv_local->tgid) {
 			file_priv->obj_attr = file_priv_local->obj_attr;
-			mutex_unlock(&dev->struct_mutex);
+			mutex_unlock(&dev->filelist_mutex);
 			return 0;
 		}
 	}
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev->filelist_mutex);
 
 	if (!dev_priv->mmtkobj_initialized) {
 		DRM_ERROR("memtrack_kobj hasn't been initialized yet\n");
@@ -478,6 +478,7 @@ void i915_gem_remove_sysfs_file_entry(struct drm_device *dev,
         * that particular tgid, and no other instances for this tgid exist in
         * the filelist. If so, remove the corresponding sysfs file entry also.
         */
+	mutex_lock(&dev->filelist_mutex);
 	list_for_each_entry (file_local, &dev->filelist, lhead) {
 		struct drm_i915_file_private *file_priv_local =
 			file_local->driver_priv;
@@ -485,6 +486,7 @@ void i915_gem_remove_sysfs_file_entry(struct drm_device *dev,
 		if (pid_nr(file_priv->tgid) == pid_nr(file_priv_local->tgid))
 			open_count++;
 	}
+	mutex_unlock(&dev->filelist_mutex);
 
 	if (open_count == 1) {
 		struct i915_gem_file_attr_priv *attr_priv;
