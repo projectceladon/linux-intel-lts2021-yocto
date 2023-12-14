@@ -304,42 +304,42 @@ static struct snd_soc_acpi_mach avs_test_i2s_machines[] = {
 		.mach_params = {
 			.i2s_link_mask = AVS_SSP(0),
 		},
-		.tplg_filename = "i2s-test-tplg.bin",
+		.tplg_filename = "i2s0-test-tplg.bin",
 	},
 	{
 		.drv_name = "avs_i2s_test",
 		.mach_params = {
 			.i2s_link_mask = AVS_SSP(1),
 		},
-		.tplg_filename = "i2s-test-tplg.bin",
+		.tplg_filename = "i2s1-test-tplg.bin",
 	},
 	{
 		.drv_name = "avs_i2s_test",
 		.mach_params = {
 			.i2s_link_mask = AVS_SSP(2),
 		},
-		.tplg_filename = "i2s-test-tplg.bin",
+		.tplg_filename = "i2s2-test-tplg.bin",
 	},
 	{
 		.drv_name = "avs_i2s_test",
 		.mach_params = {
 			.i2s_link_mask = AVS_SSP(3),
 		},
-		.tplg_filename = "i2s-test-tplg.bin",
+		.tplg_filename = "i2s3-test-tplg.bin",
 	},
 	{
 		.drv_name = "avs_i2s_test",
 		.mach_params = {
 			.i2s_link_mask = AVS_SSP(4),
 		},
-		.tplg_filename = "i2s-test-tplg.bin",
+		.tplg_filename = "i2s4-test-tplg.bin",
 	},
 	{
 		.drv_name = "avs_i2s_test",
 		.mach_params = {
 			.i2s_link_mask = AVS_SSP(5),
 		},
-		.tplg_filename = "i2s-test-tplg.bin",
+		.tplg_filename = "i2s5-test-tplg.bin",
 	},
 	/* no NULL terminator, as we depend on ARRAY SIZE due to .id == NULL */
 };
