@@ -250,16 +250,20 @@ static void handle_rpc_supp_cmd(struct tee_context *ctx,
 	params = kmalloc_array(arg->num_params, sizeof(struct tee_param),
 			       GFP_KERNEL);
 	if (!params) {
+		pr_info("jingdong: handle_rpc_supp_cmd 1111\n");
 		arg->ret = TEEC_ERROR_OUT_OF_MEMORY;
 		return;
 	}
 
 	if (optee_from_msg_param(params, arg->num_params, arg->params)) {
+		pr_info("jingdong: handle_rpc_supp_cmd 2222\n");
 		arg->ret = TEEC_ERROR_BAD_PARAMETERS;
 		goto out;
 	}
 
+	pr_info("jingdong: supp arg cmd=0x%lx recv\n", arg->cmd);
 	arg->ret = optee_supp_thrd_req(ctx, arg->cmd, arg->num_params, params);
+	pr_info("jingdong: supp arg cmd=0x%lx done\n", arg->cmd);
 
 	if (optee_to_msg_param(arg->params, arg->num_params, params))
 		arg->ret = TEEC_ERROR_BAD_PARAMETERS;
@@ -524,6 +528,7 @@ static void handle_rpc_func_cmd(struct tee_context *ctx, struct optee *optee,
 	}
 #endif
 
+	pr_info("jingdong: handle_rpc_func_cmd 0x%lx\n", arg->cmd);
 	switch (arg->cmd) {
 	case OPTEE_RPC_CMD_GET_TIME:
 		handle_rpc_func_cmd_get_time(arg);
@@ -548,6 +553,7 @@ static void handle_rpc_func_cmd(struct tee_context *ctx, struct optee *optee,
 		handle_rpc_func_cmd_bm_reg(arg);
 		break;
 	default:
+		pr_info("jingdong: call handle_rpc_supp_cmd\n");
 		handle_rpc_supp_cmd(ctx, arg);
 	}
 }
@@ -608,6 +614,7 @@ void optee_handle_rpc(struct tee_context *ctx, struct optee_rpc_param *param,
 		return;
 #endif
 	case OPTEE_SMC_RPC_FUNC_CMD:
+		pr_info("jingdong: rpc func 0x%lx/0x%lx\n", param->a1, param->a2);
 		shm = reg_pair_to_ptr(param->a1, param->a2);
 		handle_rpc_func_cmd(ctx, optee, shm, call_ctx);
 		break;

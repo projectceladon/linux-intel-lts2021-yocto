@@ -164,10 +164,13 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 		optee->invoke_fn(param.a0, param.a1, param.a2, param.a3,
 				 param.a4, param.a5, param.a6, param.a7,
 				 &res);
+		pr_info("jingdong 1111: res.a0=0x%lx\n", res.a0);
 		trace_optee_invoke_fn_end(&param, &res);
 
+		pr_info("jingdong 5555: res.a0=0x%lx\n", res.a0);
 		optee_bm_timestamp();
 
+		pr_info("jingdong 2222: res.a0=0x%lx\n", res.a0);
 		if (res.a0 == OPTEE_SMC_RETURN_ETHREAD_LIMIT) {
 			/*
 			 * Out of threads in secure world, wait for a thread
@@ -175,11 +178,15 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 			 */
 			optee_cq_wait_for_completion(&optee->call_queue, &w);
 		} else if (OPTEE_SMC_RETURN_IS_RPC(res.a0)) {
+			pr_info("jingdong 3333: res.a0=0x%lx\n", res.a0);
 			cond_resched();
+			pr_info("jingdong 4444: res.a0=0x%lx\n", res.a0);
 			param.a0 = res.a0;
 			param.a1 = res.a1;
 			param.a2 = res.a2;
 			param.a3 = res.a3;
+			pr_info("jingdong: rpc params 0x%lx/0x%lx/0x%lx/0x%lx\n",
+				param.a0, param.a1, param.a2, param.a3);
 			optee_handle_rpc(ctx, &param, &call_ctx);
 		} else {
 			ret = res.a0;

@@ -130,6 +130,10 @@ static DEFINE_SPINLOCK(smc_ring_lock);
 
 //SMC wait queue, waiting for interrupt from TEE
 static DECLARE_WAIT_QUEUE_HEAD(optee_smc_queue);
+
+u64 optee_int_recv_count1 = 0;
+u64 optee_int_recv_count2 = 0;
+u64 optee_int_send_count = 0;
 #endif
 
 /**
@@ -824,6 +828,7 @@ static void optee_smccc_smc(unsigned long a0, unsigned long a1,
 			    struct arm_smccc_res *res)
 {
 	u16 index = 0;
+	int ret = -EINVAL;
 
 	spin_lock(&smc_ring_lock);
 
@@ -849,21 +854,28 @@ static void optee_smccc_smc(unsigned long a0, unsigned long a1,
 	g_smc_args[index].a5  = a5;
 	g_smc_args[index].a6  = a6;
 	g_smc_args[index].a7  = a7;
+	g_smc_args[index].a8  = 0x0;
 
 	spin_lock(&smc_ring_lock);
 	g_smc_used_ring->ring[g_smc_used_ring->tail] = index;
 	g_smc_used_ring->tail = (g_smc_used_ring->tail + 1) % OPTEE_SHM_QUEUE_SIZE;
 	spin_unlock(&smc_ring_lock);
 
+	optee_int_send_count++;
+	pr_info("jingdong1111: send=%lld, recv1=%lld, recv2=%lld, index=%d\n",
+		optee_int_send_count, optee_int_recv_count1, optee_int_recv_count2, index);
 	writel(g_smc_vm_ids->tee_id << 16, g_ivshmem_dev.regs_addr + DOORBELL_OFF);
 
-	wait_event_interruptible(optee_smc_queue, (g_smc_args[index].a8 == OPTEE_HANDLE_DONE));
+	ret = wait_event_interruptible(optee_smc_queue, (g_smc_args[index].a8 == OPTEE_HANDLE_DONE));
 
 	g_smc_args[index].a8 = 0x0;
 	res->a0 = g_smc_args[index].a0;
 	res->a1 = g_smc_args[index].a1;
 	res->a2 = g_smc_args[index].a2;
 	res->a3 = g_smc_args[index].a3;
+
+	pr_info("jingdong2222: send=%lld, recv1=%lld, recv2=%lld, index=%d, ret=%ld\n",
+		optee_int_send_count, optee_int_recv_count1, optee_int_recv_count2, index, ret);
 
 	spin_lock(&smc_ring_lock);
 	g_smc_avail_ring->ring[g_smc_avail_ring->tail] = index;
@@ -1156,9 +1168,11 @@ static irqreturn_t ivshmem_interrupt(int irq, void *dev_id)
 {
 	struct ivshmem_private *ivshmem_dev = dev_id;
 
+	optee_int_recv_count1++;
 	if (unlikely(ivshmem_dev == NULL)) {
 		return IRQ_NONE;
 	}
+	optee_int_recv_count2++;
 
 	wake_up_interruptible(&optee_smc_queue);
 
@@ -1324,6 +1338,7 @@ static int ivshmem_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	for (i = 0; i < OPTEE_SHM_QUEUE_SIZE; i++) {
 		g_smc_used_ring->ring[i] = OPTEE_SHM_QUEUE_SIZE;
 	}
+	memset(g_smc_args, 0, sizeof(struct optee_smc_args) * OPTEE_SHM_QUEUE_SIZE);
 
 	g_ivshmem_dev.dev = pdev;
 
