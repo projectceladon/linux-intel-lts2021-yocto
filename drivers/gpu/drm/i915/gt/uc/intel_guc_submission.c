@@ -777,7 +777,8 @@ static inline int rq_prio(const struct i915_request *rq)
 
 static bool is_multi_lrc_rq(struct i915_request *rq)
 {
-	return intel_context_is_parallel(rq->context);
+	return intel_context_is_child(rq->context) ||
+		intel_context_is_parent(rq->context);
 }
 
 static bool can_merge_rq(struct i915_request *rq,
