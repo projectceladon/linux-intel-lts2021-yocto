@@ -497,6 +497,7 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 	BUG_ON(ctx && vq->indirect);
 
 	if (unlikely(vq->broken)) {
+		printk("vq broken\n");
 		END_USE(vq);
 		return -EIO;
 	}
@@ -528,7 +529,7 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 	}
 
 	if (vq->vq.num_free < descs_used) {
-		pr_debug("Can't add buf len %i - avail = %i\n",
+		printk("Can't add buf len %i - avail = %i\n",
 			 descs_used, vq->vq.num_free);
 		/* FIXME: for historical reasons, we force a notify here if
 		 * there are outgoing parts to the buffer.  Presumably the
@@ -544,8 +545,10 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 	for (n = 0; n < out_sgs; n++) {
 		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
 			dma_addr_t addr = vring_map_one_sg(vq, sg, DMA_TO_DEVICE);
-			if (vring_mapping_error(vq, addr))
+			if (vring_mapping_error(vq, addr)) {
+				printk("unmap release: map out sg err \n");
 				goto unmap_release;
+			}
 
 			prev = i;
 			/* Note that we trust indirect descriptor
@@ -559,8 +562,10 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 	for (; n < (out_sgs + in_sgs); n++) {
 		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
 			dma_addr_t addr = vring_map_one_sg(vq, sg, DMA_FROM_DEVICE);
-			if (vring_mapping_error(vq, addr))
+			if (vring_mapping_error(vq, addr)) {
+				printk("unmap release: map in sg err \n");
 				goto unmap_release;
+			}
 
 			prev = i;
 			/* Note that we trust indirect descriptor
@@ -584,8 +589,10 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 		dma_addr_t addr = vring_map_single(
 			vq, desc, total_sg * sizeof(struct vring_desc),
 			DMA_TO_DEVICE);
-		if (vring_mapping_error(vq, addr))
+		if (vring_mapping_error(vq, addr)) {
+			printk("unmap release \n");
 			goto unmap_release;
+		}
 
 		virtqueue_add_desc_split(_vq, vq->split.vring.desc,
 					 head, addr,
