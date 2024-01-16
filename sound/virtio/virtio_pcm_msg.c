@@ -135,6 +135,9 @@ int virtsnd_pcm_msg_alloc(struct virtio_pcm_substream *vss,
 	struct snd_pcm_runtime *runtime = vss->substream->runtime;
 	unsigned int i;
 
+        struct virtio_device *vdev = vss->snd->vdev;
+        dev_err(&vdev->dev, "%s enter\n", __func__);
+
 	vss->msgs = kcalloc(periods, sizeof(*vss->msgs), GFP_KERNEL);
 	if (!vss->msgs)
 		return -ENOMEM;
@@ -208,6 +211,8 @@ int virtsnd_pcm_msg_send(struct virtio_pcm_substream *vss)
 	int i;
 	int n;
 	bool notify = false;
+
+        dev_err(&vdev->dev, "%s enter\n", __func__);
 
 	i = (vss->msg_last_enqueued + 1) % runtime->periods;
 	n = runtime->periods - vss->msg_count;
@@ -290,6 +295,9 @@ static void virtsnd_pcm_msg_complete(struct virtio_pcm_msg *msg,
 				     size_t written_bytes)
 {
 	struct virtio_pcm_substream *vss = msg->substream;
+
+        struct virtio_device *vdev = vss->snd->vdev;
+        dev_err(&vdev->dev, "%s enter\n", __func__);
 
 	/*
 	 * hw_ptr always indicates the buffer position of the first I/O message
