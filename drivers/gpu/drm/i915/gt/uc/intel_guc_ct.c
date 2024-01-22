@@ -40,11 +40,16 @@ static inline struct drm_device *ct_to_drm(struct intel_guc_ct *ct)
 
 #define CT_ERROR(_ct, _fmt, ...) \
 	drm_err(ct_to_drm(_ct), "CT: " _fmt, ##__VA_ARGS__)
+
+#define CT_DEBUG(_ct, _fmt, ...) \
+	drm_info(ct_to_drm(_ct), "CT: " _fmt, ##__VA_ARGS__)
+#if 0
 #ifdef CONFIG_DRM_I915_DEBUG_GUC
 #define CT_DEBUG(_ct, _fmt, ...) \
 	drm_dbg(ct_to_drm(_ct), "CT: " _fmt, ##__VA_ARGS__)
 #else
 #define CT_DEBUG(...)	do { } while (0)
+#endif
 #endif
 #define CT_PROBE_ERROR(_ct, _fmt, ...) \
 	i915_probe_error(ct_to_i915(ct), "CT: " _fmt, ##__VA_ARGS__)
