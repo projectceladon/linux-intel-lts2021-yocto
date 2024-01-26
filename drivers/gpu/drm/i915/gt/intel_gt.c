@@ -645,8 +645,10 @@ int intel_gt_wait_for_idle(struct intel_gt *gt, long timeout)
 			return -EINTR;
 	}
 
-	if (timeout)
+	if (timeout) {
+		DRM_INFO("intel_gt_retire_requests_timeout timeout is %d\n", timeout);
 		return timeout;
+	}
 
 	if (remaining_timeout < 0)
 		remaining_timeout = 0;
@@ -714,9 +716,11 @@ int intel_gt_init(struct intel_gt *gt)
 		goto err_gt;
 
 	err = __engines_record_defaults(gt);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "__engines_record_defaults failed: %d\n", err);
+		intel_klog_error_capture(gt, (intel_engine_mask_t)~0U);
 		goto err_gt;
-
+	}
 	err = __engines_verify_workarounds(gt);
 	if (err)
 		goto err_gt;

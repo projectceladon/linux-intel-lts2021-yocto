@@ -176,6 +176,7 @@ bool gen11_gt_reset_one_iir(struct intel_gt *gt,
 	lockdep_assert_held(gt->irq_lock);
 
 	dw = raw_reg_read(regs, GEN11_GT_INTR_DW(bank));
+	DRM_INFO("Reset IIR: bank = %d, bit = %d, reg = 0x%08X\n", bank, bit, dw);
 	if (dw & BIT(bit)) {
 		/*
 		 * According to the BSpec, DW_IIR bits cannot be cleared without
@@ -190,6 +191,10 @@ bool gen11_gt_reset_one_iir(struct intel_gt *gt,
 		 * everybody.
 		 */
 		raw_reg_write(regs, GEN11_GT_INTR_DW(bank), BIT(bit));
+
+		dw = raw_reg_read(regs, GEN11_GT_INTR_DW(bank));
+		DRM_INFO("Reset IIR: bank = %d, bit = %d, reg = 0x%08X\n",
+			bank, bit, dw);
 
 		return true;
 	}
@@ -241,6 +246,7 @@ void gen11_gt_irq_reset(struct intel_gt *gt)
 	intel_uncore_write(uncore, GEN11_GUC_SG_INTR_ENABLE, 0);
 	intel_uncore_write(uncore, GEN11_GUC_SG_INTR_MASK,  ~0);
 
+	DRM_INFO("Disabling GuC interrupts\n");
 	intel_uncore_write(uncore, GEN11_CRYPTO_RSVD_INTR_ENABLE, 0);
 	intel_uncore_write(uncore, GEN11_CRYPTO_RSVD_INTR_MASK,  ~0);
 }
@@ -252,6 +258,7 @@ void gen11_gt_irq_postinstall(struct intel_gt *gt)
 	const u32 gsc_mask = GSC_IRQ_INTF(0) | GSC_IRQ_INTF(1);
 	u32 dmask;
 	u32 smask;
+	u32 reg_enable, reg_mask;
 
 	if (!intel_uc_wants_guc_submission(&gt->uc))
 		irqs |= GT_CS_MASTER_ERROR_INTERRUPT |
@@ -311,6 +318,10 @@ void gen11_gt_irq_postinstall(struct intel_gt *gt)
 	/* Same thing for GuC interrupts */
 	intel_uncore_write(uncore, GEN11_GUC_SG_INTR_ENABLE, 0);
 	intel_uncore_write(uncore, GEN11_GUC_SG_INTR_MASK,  ~0);
+	reg_enable = intel_uncore_read(uncore, GEN11_GUC_SG_INTR_ENABLE);
+	reg_mask = intel_uncore_read(uncore, GEN11_GUC_SG_INTR_MASK);
+	DRM_INFO("Enabling GuC interrupts: enable = 0x%08X, mask = 0x%08X\n",
+			reg_enable, reg_mask);
 }
 
 void gen5_gt_irq_handler(struct intel_gt *gt, u32 gt_iir)
