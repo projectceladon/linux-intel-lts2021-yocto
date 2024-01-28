@@ -36,6 +36,19 @@
 #include <drm/drm_debugfs_crc.h>
 #include <drm/drm_mode_config.h>
 
+#include <linux/fb.h>
+#include <linux/hdmi.h>
+#include <linux/media-bus-format.h>
+#include <uapi/drm/drm_mode.h>
+#include <uapi/drm/drm_fourcc.h>
+#include <drm/drm_rect.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_connector.h>
+#include <drm/drm_property.h>
+#include <drm/drm_edid.h>
+#include <drm/drm_blend.h>
+#include <drm/drm_color_mgmt.h>
+
 struct drm_connector;
 struct drm_device;
 struct drm_framebuffer;

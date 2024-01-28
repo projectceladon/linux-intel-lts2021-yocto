@@ -26,6 +26,15 @@
 
 #include <linux/types.h>
 
+/*
+ * Drivers that don't allow primary plane scaling may pass this macro in place
+ * of the min/max scale parameters of the update checker function.
+ *
+ * Due to src being in 16.16 fixed point and dest being in integer pixels,
+ * 1<<16 represents no scaling.
+ */
+#define DRM_PLANE_HELPER_NO_SCALING (1<<16)
+
 struct drm_crtc;
 struct drm_framebuffer;
 struct drm_modeset_acquire_ctx;

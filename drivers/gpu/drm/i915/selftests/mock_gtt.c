@@ -27,29 +27,29 @@
 static void mock_insert_page(struct i915_address_space *vm,
 			     dma_addr_t addr,
 			     u64 offset,
-			     enum i915_cache_level level,
+			     unsigned int pat_index,
 			     u32 flags)
 {
 }
 
 static void mock_insert_entries(struct i915_address_space *vm,
-				struct i915_vma_resource *vma_res,
-				enum i915_cache_level level, u32 flags)
+				struct i915_vm_pt_stash *stash,
+				struct i915_vma *vma,
+				unsigned int pat_index,
+				u32 flags)
 {
 }
 
 static void mock_bind_ppgtt(struct i915_address_space *vm,
 			    struct i915_vm_pt_stash *stash,
-			    struct i915_vma_resource *vma_res,
-			    enum i915_cache_level cache_level,
+			    struct i915_vma *vma,
+			    unsigned int pat_index,
 			    u32 flags)
 {
-	GEM_BUG_ON(flags & I915_VMA_GLOBAL_BIND);
-	vma_res->bound_flags |= flags;
 }
 
 static void mock_unbind_ppgtt(struct i915_address_space *vm,
-			      struct i915_vma_resource *vma_res)
+			      struct i915_vma *vma)
 {
 }
 
@@ -65,6 +65,7 @@ static void mock_clear_range(struct i915_address_space *vm,
 struct i915_ppgtt *mock_ppgtt(struct drm_i915_private *i915, const char *name)
 {
 	struct i915_ppgtt *ppgtt;
+	int err;
 
 	ppgtt = kzalloc(sizeof(*ppgtt), GFP_KERNEL);
 	if (!ppgtt)
@@ -75,7 +76,11 @@ struct i915_ppgtt *mock_ppgtt(struct drm_i915_private *i915, const char *name)
 	ppgtt->vm.total = round_down(U64_MAX, PAGE_SIZE);
 	ppgtt->vm.dma = i915->drm.dev;
 
-	i915_address_space_init(&ppgtt->vm, VM_CLASS_PPGTT);
+	err = i915_address_space_init(&ppgtt->vm, VM_CLASS_PPGTT);
+	if (err) {
+		kfree(ppgtt);
+		return ERR_PTR(err);
+	}
 
 	ppgtt->vm.alloc_pt_dma = alloc_pt_dma;
 	ppgtt->vm.alloc_scratch_dma = alloc_pt_dma;
@@ -87,20 +92,22 @@ struct i915_ppgtt *mock_ppgtt(struct drm_i915_private *i915, const char *name)
 
 	ppgtt->vm.vma_ops.bind_vma    = mock_bind_ppgtt;
 	ppgtt->vm.vma_ops.unbind_vma  = mock_unbind_ppgtt;
+	ppgtt->vm.vma_ops.set_pages   = ppgtt_set_pages;
+	ppgtt->vm.vma_ops.clear_pages = clear_pages;
 
 	return ppgtt;
 }
 
 static void mock_bind_ggtt(struct i915_address_space *vm,
 			   struct i915_vm_pt_stash *stash,
-			   struct i915_vma_resource *vma_res,
-			   enum i915_cache_level cache_level,
+			   struct i915_vma *vma,
+			   unsigned int pat_index,
 			   u32 flags)
 {
 }
 
 static void mock_unbind_ggtt(struct i915_address_space *vm,
-			     struct i915_vma_resource *vma_res)
+			     struct i915_vma *vma)
 {
 }
 
@@ -126,7 +133,10 @@ void mock_init_ggtt(struct intel_gt *gt)
 
 	ggtt->vm.vma_ops.bind_vma    = mock_bind_ggtt;
 	ggtt->vm.vma_ops.unbind_vma  = mock_unbind_ggtt;
+	ggtt->vm.vma_ops.set_pages   = ggtt_set_pages;
+	ggtt->vm.vma_ops.clear_pages = clear_pages;
 
+	INIT_LIST_HEAD(&ggtt->gt_list);
 	i915_address_space_init(&ggtt->vm, VM_CLASS_GGTT);
 }
 
