@@ -402,10 +402,19 @@ drm_hdmi_vendor_infoframe_from_display_mode(struct hdmi_vendor_infoframe *frame,
 					    const struct drm_display_mode *mode);
 
 void
+drm_hdmi_avi_infoframe_colorspace(struct hdmi_avi_infoframe *frame,
+				  const struct drm_connector_state *conn_state);
+
+
+void
 drm_hdmi_avi_infoframe_quant_range(struct hdmi_avi_infoframe *frame,
 				   const struct drm_connector *connector,
 				   const struct drm_display_mode *mode,
 				   enum hdmi_quantization_range rgb_quant_range);
+
+int
+drm_hdmi_infoframe_set_hdr_metadata(struct hdmi_drm_infoframe *frame,
+				    const struct drm_connector_state *conn_state);
 
 /**
  * drm_eld_mnl - Get ELD monitor name length in bytes.
@@ -608,5 +617,8 @@ int drm_edid_connector_update(struct drm_connector *connector,
 			      const struct drm_edid *edid);
 const u8 *drm_find_edid_extension(const struct drm_edid *drm_edid,
 				  int ext_id, int *ext_index);
+
+int drm_hdmi_sink_max_frl_rate(struct drm_connector *connector);
+int drm_hdmi_sink_dsc_max_frl_rate(struct drm_connector *connector);
 
 #endif /* __DRM_EDID_H__ */

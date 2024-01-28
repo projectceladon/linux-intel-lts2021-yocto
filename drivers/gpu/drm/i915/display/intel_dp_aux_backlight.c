@@ -294,7 +294,6 @@ intel_dp_aux_hdr_setup_backlight(struct intel_connector *connector, enum pipe pi
 			return ret;
 		}
 	}
-
 	if (luminance_range->max_luminance) {
 		panel->backlight.max = luminance_range->max_luminance;
 		panel->backlight.min = luminance_range->min_luminance;
