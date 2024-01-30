@@ -3280,6 +3280,8 @@ static int snd_pcm_common_ioctl(struct file *file,
 	struct snd_pcm_file *pcm_file = file->private_data;
 	int res;
 
+	pcm_err(substream->pcm, "%s ioctl = 0x%x\n", __func__, cmd);
+
 	if (PCM_RUNTIME_CHECK(substream))
 		return -ENXIO;
 
