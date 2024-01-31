@@ -267,6 +267,8 @@ static int snd_pcm_update_hw_ptr0(struct snd_pcm_substream *substream,
 	struct timespec64 audio_tstamp;
 	int crossed_boundary = 0;
 
+	pcm_err(substream->pcm, "%s\n", __func__);
+
 	old_hw_ptr = runtime->status->hw_ptr;
 
 	/*
@@ -293,6 +295,7 @@ static int snd_pcm_update_hw_ptr0(struct snd_pcm_substream *substream,
 	}
 
 	if (pos == SNDRV_PCM_POS_XRUN) {
+		pcm_err(substream->pcm, "%s, trigger xrun\n", __func__);
 		__snd_pcm_xrun(substream);
 		return -EPIPE;
 	}
@@ -2128,6 +2131,8 @@ int pcm_lib_apply_appl_ptr(struct snd_pcm_substream *substream,
 	snd_pcm_uframes_t old_appl_ptr = runtime->control->appl_ptr;
 	int ret;
 
+	pcm_err(substream->pcm, "%s\n", __func__);
+
 	if (old_appl_ptr == appl_ptr)
 		return 0;
 
@@ -2136,8 +2141,10 @@ int pcm_lib_apply_appl_ptr(struct snd_pcm_substream *substream,
 		ret = substream->ops->ack(substream);
 		if (ret < 0) {
 			runtime->control->appl_ptr = old_appl_ptr;
-			if (ret == -EPIPE)
+			if (ret == -EPIPE) {
+				pcm_err(substream->pcm, "%s xrun\n", __func__);
 				__snd_pcm_xrun(substream);
+			}
 			return ret;
 		}
 	}
@@ -2161,6 +2168,8 @@ snd_pcm_sframes_t __snd_pcm_lib_xfer(struct snd_pcm_substream *substream,
 	bool nonblock;
 	bool is_playback;
 	int err;
+
+	pcm_err(substream->pcm, "%s enter\n", __func__);
 
 	err = pcm_sanity_check(substream);
 	if (err < 0)

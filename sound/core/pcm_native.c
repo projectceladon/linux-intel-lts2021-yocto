@@ -3032,6 +3032,8 @@ static int snd_pcm_sync_ptr(struct snd_pcm_substream *substream,
 	volatile struct snd_pcm_mmap_control *control;
 	int err;
 
+	pcm_err(substream->pcm, "%s\n", __func__);
+
 	memset(&sync_ptr, 0, sizeof(sync_ptr));
 	if (get_user(sync_ptr.flags, (unsigned __user *)&(_sync_ptr->flags)))
 		return -EFAULT;
@@ -3122,6 +3124,8 @@ static int snd_pcm_ioctl_sync_ptr_compat(struct snd_pcm_substream *substream,
 	struct snd_pcm_mmap_status sstatus;
 	snd_pcm_uframes_t boundary;
 	int err;
+
+	pcm_err(substream->pcm, "%s\n", __func__);
 
 	if (snd_BUG_ON(!runtime))
 		return -EINVAL;
