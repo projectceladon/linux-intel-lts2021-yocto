@@ -3125,8 +3125,6 @@ static int snd_pcm_ioctl_sync_ptr_compat(struct snd_pcm_substream *substream,
 	snd_pcm_uframes_t boundary;
 	int err;
 
-	pcm_err(substream->pcm, "%s\n", __func__);
-
 	if (snd_BUG_ON(!runtime))
 		return -EINVAL;
 

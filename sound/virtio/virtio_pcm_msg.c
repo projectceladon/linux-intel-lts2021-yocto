@@ -297,7 +297,7 @@ static void virtsnd_pcm_msg_complete(struct virtio_pcm_msg *msg,
 	struct virtio_pcm_substream *vss = msg->substream;
 
         struct virtio_device *vdev = vss->snd->vdev;
-        dev_err(&vdev->dev, "%s enter, nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
+	snd_pcm_uframes_t write = bytes_to_frames(vss->substream->runtime, written_bytes);
 
 	/*
 	 * hw_ptr always indicates the buffer position of the first I/O message
@@ -320,6 +320,9 @@ static void virtsnd_pcm_msg_complete(struct virtio_pcm_msg *msg,
 
 	vss->xfer_xrun = false;
 	vss->msg_count--;
+
+	dev_err(&vdev->dev, "%s enter, write=%lu hw_ptr=%lu\n", __func__, write,
+		bytes_to_frames(vss->substream->runtime, vss->hw_ptr));
 
 	if (vss->xfer_enabled) {
 		struct snd_pcm_runtime *runtime = vss->substream->runtime;
