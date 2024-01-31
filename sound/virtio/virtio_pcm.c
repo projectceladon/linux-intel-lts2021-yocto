@@ -307,6 +307,9 @@ static void virtsnd_pcm_period_elapsed(struct work_struct *work)
 {
 	struct virtio_pcm_substream *vss =
 		container_of(work, struct virtio_pcm_substream, elapsed_period);
+	struct virtio_device *vdev = vss->snd->vdev;
+
+	dev_err(&vdev->dev, "%s, nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
 
 	snd_pcm_period_elapsed(vss->substream);
 }

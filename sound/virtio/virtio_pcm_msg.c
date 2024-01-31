@@ -136,7 +136,7 @@ int virtsnd_pcm_msg_alloc(struct virtio_pcm_substream *vss,
 	unsigned int i;
 
         struct virtio_device *vdev = vss->snd->vdev;
-        dev_err(&vdev->dev, "%s enter\n", __func__);
+        dev_err(&vdev->dev, "%s enter, nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
 
 	vss->msgs = kcalloc(periods, sizeof(*vss->msgs), GFP_KERNEL);
 	if (!vss->msgs)
@@ -297,7 +297,7 @@ static void virtsnd_pcm_msg_complete(struct virtio_pcm_msg *msg,
 	struct virtio_pcm_substream *vss = msg->substream;
 
         struct virtio_device *vdev = vss->snd->vdev;
-        dev_err(&vdev->dev, "%s enter\n", __func__);
+        dev_err(&vdev->dev, "%s enter, nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
 
 	/*
 	 * hw_ptr always indicates the buffer position of the first I/O message

@@ -109,7 +109,7 @@ static int virtsnd_pcm_open(struct snd_pcm_substream *substream)
 	struct virtio_pcm_substream *vss = vs->substreams[substream->number];
 
 	struct virtio_device *vdev = vss->snd->vdev;
-        dev_err(&vdev->dev, "%s enter\n", __func__);
+        dev_err(&vdev->dev, "%s enter, nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
 
 	substream->runtime->hw = vss->hw;
 	substream->private_data = vss;
@@ -221,7 +221,7 @@ static int virtsnd_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct virtio_device *vdev = vss->snd->vdev;
 	int rc;
 
-        dev_err(&vdev->dev, "%s enter\n", __func__);
+        dev_err(&vdev->dev, "%s enter, nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
 
 	if (virtsnd_pcm_msg_pending_num(vss)) {
 		dev_err(&vdev->dev, "SID %u: invalid I/O queue state\n",
@@ -259,7 +259,7 @@ static int virtsnd_pcm_hw_free(struct snd_pcm_substream *substream)
 	struct virtio_pcm_substream *vss = snd_pcm_substream_chip(substream);
 
         struct virtio_device *vdev = vss->snd->vdev;
-        dev_err(&vdev->dev, "%s enter\n", __func__);
+        dev_err(&vdev->dev, "%s enter nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
 
 	/* If the queue is flushed, we can safely free the messages here. */
 	if (!virtsnd_pcm_msg_pending_num(vss))
@@ -281,7 +281,7 @@ static int virtsnd_pcm_prepare(struct snd_pcm_substream *substream)
 	struct virtio_device *vdev = vss->snd->vdev;
 	struct virtio_snd_msg *msg;
 
-        dev_err(&vdev->dev, "%s enter\n", __func__);
+        dev_err(&vdev->dev, "%s enter, nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
 
 	if (!vss->suspended) {
 		if (virtsnd_pcm_msg_pending_num(vss)) {
@@ -337,7 +337,7 @@ static int virtsnd_pcm_trigger(struct snd_pcm_substream *substream, int command)
 	int rc;
 
         struct virtio_device *vdev = vss->snd->vdev;
-        dev_err(&vdev->dev, "%s enter, command: %d\n", __func__, command);
+        dev_err(&vdev->dev, "%s enter, command: %d, nid=%d, sid=%d\n", __func__, command, vss->nid, vss->sid);
 
 	switch (command) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -406,7 +406,7 @@ static int virtsnd_pcm_sync_stop(struct snd_pcm_substream *substream)
 	int rc;
 
         struct virtio_device *vdev = vss->snd->vdev;
-        dev_err(&vdev->dev, "%s enter\n", __func__);
+        dev_err(&vdev->dev, "%s enter, nid=%d, sid=%d\n", __func__, vss->nid, vss->sid);
 
 	cancel_work_sync(&vss->elapsed_period);
 
