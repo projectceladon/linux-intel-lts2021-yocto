@@ -5065,6 +5065,8 @@ intel_crtc_copy_uapi_to_hw_state_nomodeset(struct intel_atomic_state *state,
 				  crtc_state->uapi.gamma_lut);
 	drm_property_replace_blob(&crtc_state->hw.ctm,
 				  crtc_state->uapi.ctm);
+	drm_property_replace_blob(&crtc_state->hw.ctm_post_offset,
+				  crtc_state->uapi.ctm_post_offset);
 }
 
 static void
@@ -5103,6 +5105,8 @@ copy_bigjoiner_crtc_state_nomodeset(struct intel_atomic_state *state,
 				  master_crtc_state->hw.gamma_lut);
 	drm_property_replace_blob(&slave_crtc_state->hw.ctm,
 				  master_crtc_state->hw.ctm);
+	drm_property_replace_blob(&slave_crtc_state->hw.ctm_post_offset,
+				  master_crtc_state->hw.ctm_post_offset);
 
 	slave_crtc_state->uapi.color_mgmt_changed = master_crtc_state->uapi.color_mgmt_changed;
 }

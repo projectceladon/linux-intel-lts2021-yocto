@@ -801,6 +801,12 @@ struct drm_mode_config {
 	 */
 	struct drm_property *ctm_property;
 	/**
+	 * @ctm_post_offset_property: Optional CRTC property to set the
+	 * matrix used to convert colors after the lookup in the
+	 * degamma LUT.
+	 */
+	struct drm_property *ctm_post_offset_property;
+	/**
 	 * @gamma_lut_property: Optional CRTC property to set the LUT used to
 	 * convert the colors, after the CTM matrix, to the gamma space of the
 	 * connected screen.

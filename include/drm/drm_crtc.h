@@ -268,6 +268,14 @@ struct drm_crtc_state {
 	struct drm_property_blob *ctm;
 
 	/**
+	 * @ctm_post_offset:
+	 *
+	 * Color transformation matrix. See drm_crtc_enable_color_mgmt(). The
+	 * blob (if not NULL) is a &struct drm_color_ctm.
+	 */
+	struct drm_property_blob *ctm_post_offset;
+
+	/**
 	 * @gamma_lut:
 	 *
 	 * Lookup table for converting pixel data after the color conversion
