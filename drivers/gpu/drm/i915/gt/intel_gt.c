@@ -738,7 +738,7 @@ int intel_gt_init(struct intel_gt *gt)
 		goto err_gt;
 	}
 
-	for (retry = 0; retry < 3; retry++) {
+	for (retry = 0; retry < 1; retry++) {
 		if (retry)
 			usleep_range(500, 1000);
 
