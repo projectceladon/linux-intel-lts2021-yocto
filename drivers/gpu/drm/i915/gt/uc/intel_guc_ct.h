@@ -81,6 +81,7 @@ struct intel_guc_ct {
 
 		struct list_head incoming; /* incoming requests */
 		struct work_struct worker; /* handler for incoming requests */
+		struct workqueue_struct *wq; /* for the worker, to avoid waits */
 	} requests;
 
 	/** @stall_time: time of first time a CTB submission is stalled */
