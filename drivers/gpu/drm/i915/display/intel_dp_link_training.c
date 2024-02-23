@@ -26,6 +26,8 @@
 #include "intel_dp.h"
 #include "intel_dp_link_training.h"
 
+extern int fpd_dp_ser_init(void);
+
 static void intel_dp_reset_lttpr_common_caps(struct intel_dp *intel_dp)
 {
 	memset(intel_dp->lttpr_common_caps, 0, sizeof(intel_dp->lttpr_common_caps));
@@ -1109,6 +1111,9 @@ static void intel_dp_schedule_fallback_link_training(struct intel_dp *intel_dp,
 {
 	struct intel_connector *intel_connector = intel_dp->attached_connector;
 	struct intel_encoder *encoder = &dp_to_dig_port(intel_dp)->base;
+	struct drm_connector *connector;
+
+	connector = &intel_connector->base;
 
 	if (intel_dp->hobl_active) {
 		drm_dbg_kms(&dp_to_i915(intel_dp)->drm,
@@ -1120,6 +1125,13 @@ static void intel_dp_schedule_fallback_link_training(struct intel_dp *intel_dp,
 							   crtc_state->port_clock,
 							   crtc_state->lane_count)) {
 		return;
+	}
+
+	if ((connector->status == connector_status_connected) &&
+		(strcmp(connector->name, "DP-3") == 0)) {
+		drm_dbg_kms(connector->dev, "[CONNECTOR:%d:%s] re-connected\n",
+		connector->base.id, connector->name);
+		fpd_dp_ser_init();
 	}
 
 	/* Schedule a Hotplug Uevent to userspace to start modeset */
