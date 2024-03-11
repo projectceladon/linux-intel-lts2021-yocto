@@ -1217,7 +1217,7 @@ bool fpd_dp_ser_setup(struct i2c_client *client)
 	fpd_dp_ser_program_vp_configs(client);
 	fpd_dp_ser_enable_vps(client);
 	/* Check if VP is synchronized to DP input */
-	//queue_delayed_work(fpd_dp_priv->wq, &fpd_dp_priv->delay_work, msecs_to_jiffies(100));
+	queue_delayed_work(fpd_dp_priv->wq, &fpd_dp_priv->delay_work, msecs_to_jiffies(100));
 
 	return true;
 }
@@ -1660,6 +1660,9 @@ void fpd_dp_deser_984_enable_output(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x4e, 0x0);
 	/* Enable INTB_IN */
 	fpd_dp_ser_write_reg(client, 0x44, 0x81);
+	/* i2c 400k */
+	fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
+	fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
 }
 
 void fpd_dp_deser_984_enable(void)
@@ -1685,9 +1688,10 @@ void fpd_dp_deser_984_enable(void)
  * @brief Check if VP is synchronized to DP input
  * @param work
  */
-static void fpd_poll_984_training(void)
+static void fpd_poll_984_training(struct work_struct *work)
 {
 	u8 VP0sts = 0;
+	int retry = 0;
 
 	pr_debug("[FPD_DP] Check if VP is synchronized to DP input\n");
 
@@ -1700,6 +1704,14 @@ static void fpd_poll_984_training(void)
 	fpd_dp_ser_read_reg(fpd_dp_priv->priv_dp_client[0], 0x42, &VP0sts);
 	pr_debug("[FPD_DP] VP0sts = 0x%02x\n", (VP0sts & 0x01));
 
+	while (((VP0sts & 0x01) == 0) && retry < 10 ) {
+		pr_debug("[FPD_DP] VP0 Not Synced - Delaying 100ms. Retry = %d\n", retry);
+		usleep_range(20000, 22000);
+		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x41, 0x30);
+		fpd_dp_ser_read_reg(fpd_dp_priv->priv_dp_client[0], 0x42, &VP0sts);
+		retry = retry + 1;
+	}
+
 	if (((VP0sts & 0x01) == 0)) {
 		pr_debug("[FPD_DP]  VPs not synchronized - performing video input reset\n");
 		/* Video Input Reset if VP is not synchronized */
@@ -1709,11 +1721,28 @@ static void fpd_poll_984_training(void)
 		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4c, 0x0);
 		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4d, 0x0);
 		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4e, 0x0);
+		goto reschedule;
 	}
 
 	pr_debug("[FPD_DP] ser training lock completed, count = %d\n", fpd_dp_priv->count);
+	fpd_dp_priv->count = 0;
+
 
 	fpd_dp_deser_984_enable();
+	return;
+
+reschedule:
+	fpd_dp_priv->count++;
+	if (fpd_dp_priv->count > 10) {
+		pr_debug("[FPD_DP] ser training lock failed, count = %d\n", fpd_dp_priv->count);
+		VP0sts = 0;
+		fpd_dp_ser_read_reg(fpd_dp_priv->priv_dp_client[0], 0xC, &VP0sts);
+		pr_debug("[FPD_DP] ser training STS  %d\n", VP0sts);
+		fpd_dp_deser_984_enable();
+		return;
+	}
+
+	queue_delayed_work(fpd_dp_priv->wq, &fpd_dp_priv->delay_work, msecs_to_jiffies(100));
 }
 
 void fpd_dp_deser_enable(void)
@@ -1795,7 +1824,7 @@ int fpd_dp_ser_init(void)
 	fpd_dp_ser_enable();
 
 	/* Check if VP is synchronized to DP input */
-	fpd_poll_984_training();
+	//fpd_poll_984_training();
 
 	fpd_dp_ser_set_up_mcu(fpd_dp_priv->priv_dp_client[0]);
 
@@ -1852,7 +1881,7 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 	}
 
 	INIT_DELAYED_WORK(&fpd_dp_priv->delay_work,
-			fpd_poll_training_lock);
+			fpd_poll_984_training);
 
 	fpd_dp_priv->count = 0;
 
