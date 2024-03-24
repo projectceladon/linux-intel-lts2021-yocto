@@ -760,6 +760,34 @@ reschedule:
 	queue_delayed_work(fpd_dp_priv->wq, &fpd_dp_priv->delay_work, msecs_to_jiffies(100));
 }
 
+static void fpd_poll_bus_ready(struct work_struct *work)
+{
+	struct i2c_adapter *adapter;
+	struct device *parent;
+	struct device *pp;
+	int i = 0;
+	int found = 0;
+
+	while ((adapter = i2c_get_adapter(i)) != NULL) {
+		parent = adapter->dev.parent;
+		pp = parent->parent;
+		i2c_put_adapter(adapter);
+		pr_debug("[FPD_DP] dev_name(pp): %s\n", dev_name(pp));
+		if (pp && !strncmp(fpd_dp_priv->adapter_bdf, dev_name(pp), 32)) {
+			found = 1;
+			break;
+		}
+		i++;
+	}
+
+	if (found == 1) {
+		fpd_dp_priv->bus_number = i;
+		return;
+	}
+
+	queue_delayed_work(fpd_dp_priv->wq, &fpd_dp_priv->bus_work, msecs_to_jiffies(100));
+}
+
 /**
  * @brief 
  * @param client 
@@ -1792,7 +1820,11 @@ static int intel_get_i2c_bus_id(int adapter_id, char *adapter_bdf, int bdf_len)
 static int get_bus_number(void)
 {
 	char adapter_bdf[32] = ADAPTER_PP_DEV_NAME;
-	int bus_number = intel_get_i2c_bus_id(0, adapter_bdf, 32);
+	fpd_dp_priv->adapter_bdf[32] =  ADAPTER_PP_DEV_NAME;
+
+	queue_delayed_work(fpd_dp_priv->wq, &fpd_dp_priv->bus_work, msecs_to_jiffies(100));
+	//int bus_number = intel_get_i2c_bus_id(0, adapter_bdf, 32);
+	int bus_number = fpd_dp_priv->bus_number;
 	return bus_number;
 }
 
@@ -1857,8 +1889,8 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	INIT_DELAYED_WORK(&fpd_dp_priv->delay_work,
-			fpd_poll_training_lock);
+	INIT_DELAYED_WORK(&fpd_dp_priv->bus_work,
+			fpd_poll_bus_ready);
 
 	fpd_dp_priv->count = 0;
 
@@ -1879,7 +1911,7 @@ static int fpd_dp_ser_remove(struct platform_device *pdev) {
 			if (i == 0)
 				fpd_dp_ser_reset(client);
 			else
-				fpd_dp_deser_soft_reset(client);
+				fpd_dp_ser_write_reg(client, 0x01, 0x01);
 			if (client != NULL) {
 				if (i == 2)
 					fpd_dp_ser_motor_close(client);
@@ -1900,12 +1932,14 @@ static int fpd_dp_ser_suspend(struct device *dev)
 #if 1
 	int i = 0;
 	struct fpd_dp_ser_priv *priv = dev_get_drvdata(dev);
-	for (i = 0; i < NUM_DEVICE; i++) {
+	for (i = 1; i > -1; i--) {
                         struct i2c_client *client= priv->priv_dp_client[i];
                         if (i == 0)
                                 fpd_dp_ser_reset(client);
                         else
-                                fpd_dp_deser_soft_reset(client);
+				fpd_dp_ser_write_reg(client, 0x01, 0x01);
+
+			usleep_range(20000, 22000);
                 }
 #endif
 	pr_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);

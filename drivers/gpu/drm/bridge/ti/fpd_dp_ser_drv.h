@@ -62,8 +62,11 @@ struct fpd_dp_ser_priv {
 	u8 FPD4_Strap_Rate_P1;
 	struct i2c_client *priv_dp_client[NUM_DEVICE];
 	struct delayed_work delay_work;
+	struct delayed_work bus_work;
 	struct workqueue_struct *wq;
 	int count;
+	char adapter_bdf[32];
+	int bus_number;
 };
 
 void fpd_dp_ser_module_exit(void);
