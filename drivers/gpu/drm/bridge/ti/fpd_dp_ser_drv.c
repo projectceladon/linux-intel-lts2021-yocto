@@ -1798,6 +1798,9 @@ static int get_bus_number(void)
 
 bool fpd_dp_ser_init(void)
 {
+	u8 read_motor_mode[5] = { 0 };
+	int i = 0;
+
 	fpd_dp_ser_enable();
 
 	/* Check if VP is synchronized to DP input */
@@ -1807,6 +1810,21 @@ bool fpd_dp_ser_init(void)
 
 	if (!fpd_dp_priv->priv_dp_client[2])
 		fpd_dp_priv->priv_dp_client[2] = i2c_new_dummy_device(fpd_dp_priv->i2c_adap, fpd_dp_i2c_board_info[2].addr);
+
+	fpd_dp_mcu_read_reg(fpd_dp_priv->priv_dp_client[2], 0x61, 5, &read_motor_mode[0]);
+	for (i = 0; i < 5; i++)
+		pr_debug("[FPD_DP] RIB [FPD_DP] RIB 0x78: 0x61, read_motor_mode[%d] 0x%02x OK\n",
+			i, read_motor_mode[i]);
+	for (i = 0; i < 3; i++) {
+		if (read_motor_mode[3] == 0) {
+			usleep_range(5000, 5200);
+			fpd_dp_mcu_read_reg(fpd_dp_priv->priv_dp_client[2], 0x61, 5, &read_motor_mode[0]);
+		} else {
+			break;
+		}
+	}
+	if (read_motor_mode[3] == 0 )
+		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
 
 	fpd_dp_ser_motor_open(fpd_dp_priv->priv_dp_client[2]);
 
@@ -1879,7 +1897,8 @@ static int fpd_dp_ser_remove(struct platform_device *pdev) {
 			if (i == 0)
 				fpd_dp_ser_reset(client);
 			else
-				fpd_dp_deser_soft_reset(client);
+				//fpd_dp_deser_soft_reset(client);
+				fpd_dp_ser_write_reg(client, 0x01, 0x01);
 			if (client != NULL) {
 				if (i == 2)
 					fpd_dp_ser_motor_close(client);
@@ -1900,12 +1919,14 @@ static int fpd_dp_ser_suspend(struct device *dev)
 #if 1
 	int i = 0;
 	struct fpd_dp_ser_priv *priv = dev_get_drvdata(dev);
-	for (i = 0; i < NUM_DEVICE; i++) {
+	for (i = 1; i > -1; i--) {
                         struct i2c_client *client= priv->priv_dp_client[i];
                         if (i == 0)
                                 fpd_dp_ser_reset(client);
                         else
-                                fpd_dp_deser_soft_reset(client);
+				fpd_dp_ser_write_reg(client, 0x01, 0x01);
+
+			usleep_range(20000, 22000);
                 }
 #endif
 	pr_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
