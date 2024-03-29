@@ -27,6 +27,35 @@
 #define AMD_TIMEOUT_MAX_US	250
 #define AMD_MASTERCFG_MASK	GENMASK(15, 0)
 
+static u32 linear_interpolate(u32 x, u32 x1, u32 x2, u32 y1, u32 y2)
+{
+	return ((x - x1) * y2 + (x2 - x) * y1) / (x2 - x1);
+}
+
+static u16 u16_clamp(u32 v)
+{
+	return (u16)min(v, 0xffff);
+}
+
+static void clock_calc(struct dw_i2c_dev *dev, u16 *hcnt, u16 *lcnt)
+{
+	struct i2c_timings *t = &dev->timings;
+	//u32 wanted_khz = (dev->wanted_bus_speed ?: t->bus_freq_hz)/1000;
+	u32 wanted_khz = 400;
+	u32 clk_khz = i2c_dw_clk_rate(dev);
+	u32 min_high_ns = (wanted_khz <= 100) ? 4000 :
+			  (wanted_khz <= 400) ?
+				linear_interpolate(wanted_khz, 100, 400, 4000, 600) :
+				linear_interpolate(wanted_khz, 400, 1000, 600, 260);
+	u32 high_cycles = (u32)(((u64)clk_khz * min_high_ns + 999999) / 1000000) + 1;
+	u32 extra_high_cycles = (u32)((u64)clk_khz * t->scl_fall_ns / 1000000);
+	u32 extra_low_cycles = (u32)((u64)clk_khz * t->scl_rise_ns / 1000000);
+	u32 period = ((u64)clk_khz + wanted_khz - 1) / wanted_khz;
+
+	*hcnt = u16_clamp(high_cycles - extra_high_cycles);
+	*lcnt = u16_clamp(period - high_cycles - extra_low_cycles);
+}
+
 static void i2c_dw_configure_fifo_master(struct dw_i2c_dev *dev)
 {
 	/* Configure Tx/Rx FIFO threshold levels */
@@ -45,6 +74,8 @@ static int i2c_dw_set_timings_master(struct dw_i2c_dev *dev)
 	const char *fp_str = "";
 	u32 ic_clk;
 	int ret;
+	u16 hcnt;
+	u16 lcnt;
 
 	ret = i2c_dw_acquire_lock(dev);
 	if (ret)
@@ -59,6 +90,7 @@ static int i2c_dw_set_timings_master(struct dw_i2c_dev *dev)
 	sda_falling_time = t->sda_fall_ns ?: 300; /* ns */
 	scl_falling_time = t->scl_fall_ns ?: 300; /* ns */
 
+	clock_calc(dev, &hcnt, &lcnt);
 	/* Calculate SCL timing parameters for standard mode if not set */
 	if (!dev->ss_hcnt || !dev->ss_lcnt) {
 		ic_clk = i2c_dw_clk_rate(dev);
@@ -74,6 +106,8 @@ static int i2c_dw_set_timings_master(struct dw_i2c_dev *dev)
 					scl_falling_time,
 					0);	/* No offset */
 	}
+		dev->ss_hcnt = hcnt;
+		dev->ss_lcnt = lcnt;
 	dev_dbg(dev->dev, "Standard Mode HCNT:LCNT = %d:%d\n",
 		dev->ss_hcnt, dev->ss_lcnt);
 
