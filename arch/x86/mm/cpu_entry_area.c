@@ -39,10 +39,11 @@ static __init void init_cea_offsets(void)
 
 	/* O(sodding terrible) */
 	for_each_possible_cpu(i) {
-		unsigned int cea;
+		static unsigned int cea = 1;
 
 again:
-		cea = prandom_u32_max(max_cea);
+		//cea = prandom_u32_max(max_cea);
+		cea++;
 
 		for_each_possible_cpu(j) {
 			if (cea_offset(j) == cea)
