@@ -2274,6 +2274,11 @@ void __init arch_cpu_finalize_init(void)
 	fpu__init_cpu();
 
 	alternative_instructions();
+	unsigned long start = PFN_ALIGN(_text);
+	unsigned long end = PFN_ALIGN(_etext);
+	printk(KERN_INFO "Write protecting the kernel text: %luk\n",
+	       (end - start) >> 10);
+	set_memory_ro(start, (end - start) >> PAGE_SHIFT);
 
 	if (IS_ENABLED(CONFIG_X86_64)) {
 		/*
