@@ -73,6 +73,7 @@
 static struct platform_device *pdev;
 struct fpd_dp_ser_priv *fpd_dp_priv;
 struct i2c_adapter *i2c_adap_mcu;
+static bool ready;
 int deser_reset;
 
 static struct i2c_board_info fpd_dp_i2c_board_info[] = {
@@ -1821,8 +1822,22 @@ bool fpd_dp_ser_init(void)
 
 	fpd_dp_ser_motor_open(fpd_dp_priv->priv_dp_client[2]);
 
+	ready = true;
+
 	return true;
 }
+
+/* Background: This module owns serdes and MCU, that is to say, serdes and MCU
+ * would be initialized here.  However, EF1E touchscreen driver depends on the
+ * functionality of serdes and MCU, so it can start to work only when
+ * initiization is done in this module.  Thus there ought to be a way of
+ * indicating whether the initializing process is complete, which is the intent
+ * of this function. */
+bool fpd_dp_ser_ready(void)
+{
+	return ready;
+}
+EXPORT_SYMBOL_GPL(fpd_dp_ser_ready);
 
 static int fpd_dp_ser_probe(struct platform_device *pdev)
 {
@@ -1938,6 +1953,7 @@ static int fpd_dp_ser_suspend(struct device *dev)
 			usleep_range(20000, 22000);
                 }
 #endif
+	ready = false;
 	pr_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
 	return 0;	
 }
@@ -1954,6 +1970,7 @@ static int fpd_dp_ser_resume(struct device *dev)
 		return -EIO;
 	}
 
+	ready = true;
 	return 0;
 }
 
@@ -2036,6 +2053,8 @@ static struct platform_driver fpd_dp_ser_driver = {
 int __init fpd_dp_ser_module_init(void)
 {
 	int ret = 0;
+
+	ready = false;
 
 	pdev = platform_device_register_simple(DEV_NAME, -1, NULL, 0);
 	pr_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
