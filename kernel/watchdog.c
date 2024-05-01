@@ -52,7 +52,7 @@ unsigned long *watchdog_cpumask_bits = cpumask_bits(&watchdog_cpumask);
 #ifdef CONFIG_HARDLOCKUP_DETECTOR
 
 # ifdef CONFIG_SMP
-int __read_mostly sysctl_hardlockup_all_cpu_backtrace;
+int __read_mostly sysctl_hardlockup_all_cpu_backtrace = 1;
 # endif /* CONFIG_SMP */
 
 /*
@@ -163,7 +163,7 @@ static void lockup_detector_update_enable(void)
 #define SOFTLOCKUP_DELAY_REPORT	ULONG_MAX
 
 #ifdef CONFIG_SMP
-int __read_mostly sysctl_softlockup_all_cpu_backtrace;
+int __read_mostly sysctl_softlockup_all_cpu_backtrace = 1;
 #endif
 
 static struct cpumask watchdog_allowed_mask __read_mostly;
