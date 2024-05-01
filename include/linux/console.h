@@ -137,6 +137,7 @@ static inline int con_debug_leave(void)
 #define CON_BRL		(32) /* Used for a braille device */
 #define CON_EXTENDED	(64) /* Use the extended output format a la /dev/kmsg */
 #define CON_IGNORELEVEL    (128) /* Used to ignore log level for a console */
+#define CON_FAST	(256) /* This is a fast console */
 
 struct console {
 	char	name[16];
@@ -225,5 +226,8 @@ extern void console_init(void);
 /* For deferred console takeover */
 void dummycon_register_output_notifier(struct notifier_block *nb);
 void dummycon_unregister_output_notifier(struct notifier_block *nb);
+
+void console_suspend_slow(void);
+void console_restore_slow(void);
 
 #endif /* _LINUX_CONSOLE_H */
