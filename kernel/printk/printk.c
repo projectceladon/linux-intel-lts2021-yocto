@@ -1212,7 +1212,11 @@ MODULE_PARM_DESC(ignore_loglevel,
 
 static bool suppress_message_printing(int level)
 {
+#ifndef CON_IGNORELEVEL
 	return (level >= console_loglevel && !ignore_loglevel);
+#else
+	return false;
+#endif
 }
 
 #ifdef CONFIG_BOOT_PRINTK_DELAY
@@ -1930,7 +1934,7 @@ static int console_trylock_spinning(void)
  * log_buf[start] to log_buf[end - 1].
  * The console_lock must be held.
  */
-static void call_console_drivers(const char *ext_text, size_t ext_len,
+static void call_console_drivers(int level, const char *ext_text, size_t ext_len,
 				 const char *text, size_t len)
 {
 	static char dropped_text[64];
@@ -1959,6 +1963,9 @@ static void call_console_drivers(const char *ext_text, size_t ext_len,
 		if (!cpu_online(smp_processor_id()) &&
 		    !(con->flags & CON_ANYTIME))
 			continue;
+		if (level >= console_loglevel &&
+            !(con->flags & CON_IGNORELEVEL) && !ignore_loglevel)
+            continue;
 		if (con->flags & CON_EXTENDED)
 			con->write(con, ext_text, ext_len);
 		else {
@@ -2348,7 +2355,7 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 				  struct dev_printk_info *dev_info) { return 0; }
 static void console_lock_spinning_enable(void) { }
 static int console_lock_spinning_disable_and_check(void) { return 0; }
-static void call_console_drivers(const char *ext_text, size_t ext_len,
+static void call_console_drivers(int level, const char *ext_text, size_t ext_len,
 				 const char *text, size_t len) {}
 static bool suppress_message_printing(int level) { return false; }
 
@@ -2764,7 +2771,7 @@ skip:
 		console_lock_spinning_enable();
 
 		stop_critical_timings();	/* don't trace print latency */
-		call_console_drivers(ext_text, ext_len, text, len);
+		call_console_drivers(r.info->level, ext_text, ext_len, text, len);
 		start_critical_timings();
 
 		handover = console_lock_spinning_disable_and_check();
