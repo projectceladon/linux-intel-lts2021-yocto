@@ -50,6 +50,8 @@ void intel_panel_add_vbt_sdvo_fixed_mode(struct intel_connector *connector);
 void intel_panel_add_encoder_fixed_mode(struct intel_connector *connector,
 					struct intel_encoder *encoder);
 
+#ifdef CONFIG_DRM_I2C_TI_983
 int intel_dp_mcu_init_backlight_funcs(struct intel_connector *intel_connector);
+#endif
 
 #endif /* __INTEL_PANEL_H__ */

@@ -5494,6 +5494,8 @@ void intel_dp_mst_resume(struct drm_i915_private *dev_priv)
 	}
 }
 
+
+#ifdef CONFIG_DRM_I2C_TI_983
 extern struct i2c_adapter *i2c_adap_mcu;
 
 char intel_dp_ser_mcu_read_reg(struct drm_device *dev, struct i2c_adapter *adapter, u8 reg_addr, u8 *val)
@@ -5683,3 +5685,4 @@ int intel_dp_mcu_init_backlight_funcs(struct intel_connector *intel_connector)
 
 	return 0;
 }
+#endif

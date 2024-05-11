@@ -1798,8 +1798,10 @@ void intel_backlight_init_funcs(struct intel_panel *panel)
 			connector->panel.backlight.power = intel_pps_backlight_power;
 	}
 
+#ifdef CONFIG_DRM_I2C_TI_983
 	if (intel_dp_mcu_init_backlight_funcs(connector) == 0)
 		return;
+#endif
 
 	/* We're using a standard PWM backlight interface */
 	panel->backlight.funcs = &pwm_bl_funcs;
