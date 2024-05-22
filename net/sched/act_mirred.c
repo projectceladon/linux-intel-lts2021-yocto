@@ -204,23 +204,102 @@ release_idr:
 	return err;
 }
 
-static bool is_mirred_nested(void)
-{
-	return unlikely(__this_cpu_read(mirred_nest_level) > 1);
-}
-
-static int tcf_mirred_forward(bool want_ingress, struct sk_buff *skb)
+static int
+tcf_mirred_forward(bool at_ingress, bool want_ingress, struct sk_buff *skb)
 {
 	int err;
 
 	if (!want_ingress)
 		err = tcf_dev_queue_xmit(skb, dev_queue_xmit);
-	else if (is_mirred_nested())
+	else if (!at_ingress)
 		err = netif_rx(skb);
 	else
 		err = netif_receive_skb(skb);
 
 	return err;
+}
+
+static int tcf_mirred_to_dev(struct sk_buff *skb, struct tcf_mirred *m,
+			     struct net_device *dev,
+			     const bool m_mac_header_xmit, int m_eaction,
+			     int retval)
+{
+	struct sk_buff *skb_to_send = skb;
+	bool want_ingress;
+	bool is_redirect;
+	bool expects_nh;
+	bool at_ingress;
+	bool dont_clone;
+	int mac_len;
+	bool at_nh;
+	int err;
+
+	is_redirect = tcf_mirred_is_act_redirect(m_eaction);
+	if (unlikely(!(dev->flags & IFF_UP)) || !netif_carrier_ok(dev)) {
+		net_notice_ratelimited("tc mirred to Houston: device %s is down\n",
+				       dev->name);
+		err = -ENODEV;
+		goto out;
+	}
+
+	/* we could easily avoid the clone only if called by ingress and clsact;
+	 * since we can't easily detect the clsact caller, skip clone only for
+	 * ingress - that covers the TC S/W datapath.
+	 */
+	at_ingress = skb_at_tc_ingress(skb);
+	dont_clone = skb_at_tc_ingress(skb) && is_redirect &&
+		tcf_mirred_can_reinsert(retval);
+	if (!dont_clone) {
+		skb_to_send = skb_clone(skb, GFP_ATOMIC);
+		if (!skb_to_send) {
+			err =  -ENOMEM;
+			goto out;
+		}
+	}
+
+	want_ingress = tcf_mirred_act_wants_ingress(m_eaction);
+
+	/* All mirred/redirected skbs should clear previous ct info */
+	nf_reset_ct(skb_to_send);
+	if (want_ingress && !at_ingress) /* drop dst for egress -> ingress */
+		skb_dst_drop(skb_to_send);
+
+	expects_nh = want_ingress || !m_mac_header_xmit;
+	at_nh = skb->data == skb_network_header(skb);
+	if (at_nh != expects_nh) {
+		mac_len = at_ingress ? skb->mac_len :
+			  skb_network_offset(skb);
+		if (expects_nh) {
+			/* target device/action expect data at nh */
+			skb_pull_rcsum(skb_to_send, mac_len);
+		} else {
+			/* target device/action expect data at mac */
+			skb_push_rcsum(skb_to_send, mac_len);
+		}
+	}
+
+	skb_to_send->skb_iif = skb->dev->ifindex;
+	skb_to_send->dev = dev;
+
+	if (is_redirect) {
+		if (skb == skb_to_send)
+			retval = TC_ACT_CONSUMED;
+
+		skb_set_redirected(skb_to_send, skb_to_send->tc_at_ingress);
+
+		err = tcf_mirred_forward(at_ingress, want_ingress, skb_to_send);
+	} else {
+		err = tcf_mirred_forward(at_ingress, want_ingress, skb_to_send);
+	}
+
+	if (err) {
+out:
+		tcf_action_inc_overlimit_qstats(&m->common);
+		if (is_redirect)
+			retval = TC_ACT_SHOT;
+	}
+
+	return retval;
 }
 
 static int tcf_mirred_act(struct sk_buff *skb, const struct tc_action *a,
