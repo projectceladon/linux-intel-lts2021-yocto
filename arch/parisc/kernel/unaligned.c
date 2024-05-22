@@ -138,8 +138,8 @@ static int emulate_ldh(struct pt_regs *regs, int toreg)
 "4:	ldi	-2, %1\n"
 	FIXUP_BRANCH(3b)
 "	.previous\n"
-	ASM_EXCEPTIONTABLE_ENTRY(1b, 4b)
-	ASM_EXCEPTIONTABLE_ENTRY(2b, 4b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%1")
 	: "=r" (val), "=r" (ret)
 	: "0" (val), "r" (saddr), "r" (regs->isr)
 	: "r20", FIXUP_BRANCH_CLOBBER );
@@ -176,8 +176,8 @@ static int emulate_ldw(struct pt_regs *regs, int toreg, int flop)
 "4:	ldi	-2, %1\n"
 	FIXUP_BRANCH(3b)
 "	.previous\n"
-	ASM_EXCEPTIONTABLE_ENTRY(1b, 4b)
-	ASM_EXCEPTIONTABLE_ENTRY(2b, 4b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%1")
 	: "=r" (val), "=r" (ret)
 	: "0" (val), "r" (saddr), "r" (regs->isr)
 	: "r19", "r20", FIXUP_BRANCH_CLOBBER );
@@ -220,8 +220,8 @@ static int emulate_ldd(struct pt_regs *regs, int toreg, int flop)
 "4:	ldi	-2, %1\n"
 	FIXUP_BRANCH(3b)
 "	.previous\n"
-	ASM_EXCEPTIONTABLE_ENTRY(1b,4b)
-	ASM_EXCEPTIONTABLE_ENTRY(2b,4b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%1")
 	: "=r" (val), "=r" (ret)
 	: "0" (val), "r" (saddr), "r" (regs->isr)
 	: "r19", "r20", FIXUP_BRANCH_CLOBBER );
@@ -245,9 +245,9 @@ static int emulate_ldd(struct pt_regs *regs, int toreg, int flop)
 "5:	ldi	-2, %2\n"
 	FIXUP_BRANCH(4b)
 "	.previous\n"
-	ASM_EXCEPTIONTABLE_ENTRY(1b,5b)
-	ASM_EXCEPTIONTABLE_ENTRY(2b,5b)
-	ASM_EXCEPTIONTABLE_ENTRY(3b,5b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 4b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 4b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 4b, "%1")
 	: "=r" (valh), "=r" (vall), "=r" (ret)
 	: "0" (valh), "1" (vall), "r" (saddr), "r" (regs->isr)
 	: "r19", "r20", FIXUP_BRANCH_CLOBBER );
@@ -287,8 +287,8 @@ static int emulate_sth(struct pt_regs *regs, int frreg)
 "4:	ldi	-2, %0\n"
 	FIXUP_BRANCH(3b)
 "	.previous\n"
-	ASM_EXCEPTIONTABLE_ENTRY(1b,4b)
-	ASM_EXCEPTIONTABLE_ENTRY(2b,4b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%0")
 	: "=r" (ret)
 	: "r" (val), "r" (regs->ior), "r" (regs->isr)
 	: "r19", FIXUP_BRANCH_CLOBBER );
@@ -334,8 +334,8 @@ static int emulate_stw(struct pt_regs *regs, int frreg, int flop)
 "4:	ldi	-2, %0\n"
 	FIXUP_BRANCH(3b)
 "	.previous\n"
-	ASM_EXCEPTIONTABLE_ENTRY(1b,4b)
-	ASM_EXCEPTIONTABLE_ENTRY(2b,4b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%0")
 	: "=r" (ret)
 	: "r" (val), "r" (regs->ior), "r" (regs->isr)
 	: "r19", "r20", "r21", "r22", "r1", FIXUP_BRANCH_CLOBBER );
@@ -384,10 +384,10 @@ static int emulate_std(struct pt_regs *regs, int frreg, int flop)
 "6:	ldi	-2, %0\n"
 	FIXUP_BRANCH(5b)
 "	.previous\n"
-	ASM_EXCEPTIONTABLE_ENTRY(1b,6b)
-	ASM_EXCEPTIONTABLE_ENTRY(2b,6b)
-	ASM_EXCEPTIONTABLE_ENTRY(3b,6b)
-	ASM_EXCEPTIONTABLE_ENTRY(4b,6b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 5b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 5b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 5b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(4b, 5b, "%0")
 	: "=r" (ret)
 	: "r" (val), "r" (regs->ior), "r" (regs->isr)
 	: "r19", "r20", "r21", "r22", "r1", FIXUP_BRANCH_CLOBBER );
@@ -418,11 +418,11 @@ static int emulate_std(struct pt_regs *regs, int frreg, int flop)
 "7:	ldi	-2, %0\n"
 	FIXUP_BRANCH(6b)
 "	.previous\n"
-	ASM_EXCEPTIONTABLE_ENTRY(1b,7b)
-	ASM_EXCEPTIONTABLE_ENTRY(2b,7b)
-	ASM_EXCEPTIONTABLE_ENTRY(3b,7b)
-	ASM_EXCEPTIONTABLE_ENTRY(4b,7b)
-	ASM_EXCEPTIONTABLE_ENTRY(5b,7b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 6b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 6b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 6b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(4b, 6b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(5b, 6b, "%0")
 	: "=r" (ret)
 	: "r" (valh), "r" (vall), "r" (regs->ior), "r" (regs->isr)
 	: "r19", "r20", "r21", "r1", FIXUP_BRANCH_CLOBBER );
