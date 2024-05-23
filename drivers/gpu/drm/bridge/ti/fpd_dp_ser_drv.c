@@ -255,6 +255,40 @@ int fpd_dp_mcu_read_reg(struct i2c_client *client, unsigned int reg_addr, u8 len
 	return 0;
 }
 
+bool fpd_dp_mcu_write_reg(struct i2c_client *client, unsigned int reg_addr, u32 val)
+{
+	int ret = 0;
+	int i = 0;
+	struct i2c_msg msg;
+	u8 buf[7];
+
+	buf[0] = reg_addr & 0xff;
+	buf[1] = 0x00;
+	buf[2] = 0x02;
+	buf[3] = val & 0xff;
+	buf[4] = buf[0]^buf[1]^buf[2]^buf[3];
+
+	msg.addr = client->addr;
+	msg.flags = 0;
+	msg.buf = &buf[0];
+	msg.len = 5;
+
+	ret = i2c_transfer(client->adapter, &msg, 1);
+
+	if (ret < 0) {
+		pr_info("[FPD_DP] [-%s-%s-%d-], fail client->addr=0x%02x, reg_addr=0x%02x, val=0x%03x\n",
+                              __FILE__, __func__, __LINE__, msg.addr, reg_addr, val);
+		return false;
+	}
+
+	for (i=0; i < msg.len; i++) {
+		pr_info("[FPD_DP] WIB 0x%02x: 0x%02x buf[%d] 0x%02x OK\n",
+			msg.addr, reg_addr, i, buf[i]);
+	}
+
+	return true;
+}
+
 /*
  * TODO not used
  * this code is for check i2c return val
@@ -1851,6 +1885,43 @@ int fpd_dp_ser_get_i2c_bus_number(void)
 }
 EXPORT_SYMBOL_GPL(fpd_dp_ser_get_i2c_bus_number);
 
+void wait_display_startup_done(struct i2c_client *client)
+{
+	int ret;
+	int n = 0;
+	int i = 0;
+	uint8_t rdata[5] = { 0 };
+	uint8_t cmd_data = 0x01;
+
+	while (++n < 100)
+	{
+		//fpd_dp_mcu_write_reg(client, 0x21, cmd_data);
+		ret = fpd_dp_mcu_read_reg(fpd_dp_priv->priv_dp_client[2], 0x61, 5, &rdata[0]);
+
+		for (i=0; i < 5; i++)
+			pr_debug("[FPD_DP] RIB [FPD_DP] RIB 0x78: 0x61, rdata[%d] 0x%02x OK\n",
+				i, rdata[i]);
+
+		if (rdata[0] == 0x61 && rdata[3] == 1)
+		{
+			pr_info("[FPD_DP] RIB DP2 UB943 wait_display_startup_done sucess");
+			break;
+		}
+		usleep_range(5000, 5200);
+	}
+
+	ret = fpd_dp_mcu_write_reg(client, 0x21, cmd_data);
+	if (ret < 0)
+	{
+		ret = fpd_dp_mcu_write_reg(client, 0x21, cmd_data);
+		if (ret < 0)
+		{
+			pr_info("[FPD_DP] DP2 UB983 wait_display_startup_done error");
+			fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
+		}
+	}
+}
+
 bool fpd_dp_ser_init(void)
 {
 	fpd_dp_ser_lock_global();
@@ -1872,6 +1943,7 @@ bool fpd_dp_ser_init(void)
 		fpd_dp_priv->priv_dp_client[2] = i2c_new_dummy_device(fpd_dp_priv->i2c_adap, fpd_dp_i2c_board_info[2].addr);
 
 	fpd_dp_ser_lock_global();
+	wait_display_startup_done(fpd_dp_priv->priv_dp_client[2]);
 	fpd_dp_ser_motor_open(fpd_dp_priv->priv_dp_client[2]);
 	fpd_dp_ser_unlock_global();
 
@@ -1939,7 +2011,7 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 	iowrite8(data, gpio_cfg);
 	iounmap(gpio_cfg);
 	/* Delay for VPs to sync to DP source */
-	usleep_range(5000, 5200);
+	msleep(100);
 
 	fpd_dp_ser_init();
 
