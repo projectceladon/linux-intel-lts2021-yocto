@@ -929,6 +929,9 @@ void ceph_handle_snap(struct ceph_mds_client *mdsc,
 	int i;
 	int locked_rwsem = 0;
 
+	if (!ceph_inc_mds_stopping_blocker(mdsc, session))
+		return;
+
 	/* decode */
 	if (msg->front.iov_len < sizeof(*h))
 		goto bad;
@@ -943,10 +946,6 @@ void ceph_handle_snap(struct ceph_mds_client *mdsc,
 
 	dout("handle_snap from mds%d op %s split %llx tracelen %d\n", mds,
 	     ceph_snap_op_name(op), split, trace_len);
-
-	mutex_lock(&session->s_mutex);
-	inc_session_sequence(session);
-	mutex_unlock(&session->s_mutex);
 
 	down_write(&mdsc->snap_rwsem);
 	locked_rwsem = 1;
@@ -1061,6 +1060,7 @@ skip_inode:
 	up_write(&mdsc->snap_rwsem);
 
 	flush_snaps(mdsc);
+	ceph_dec_mds_stopping_blocker(mdsc);
 	return;
 
 bad:
@@ -1069,6 +1069,9 @@ bad:
 out:
 	if (locked_rwsem)
 		up_write(&mdsc->snap_rwsem);
+
+	ceph_dec_mds_stopping_blocker(mdsc);
+
 	return;
 }
 
