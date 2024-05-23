@@ -29,12 +29,6 @@ static __init void init_cea_offsets(void)
 	unsigned int max_cea;
 	unsigned int i, j;
 
-	if (!kaslr_enabled()) {
- 		for_each_possible_cpu(i)
- 			per_cpu(_cea_offset, i) = i;
- 		return;
- 	}
-
 	max_cea = (CPU_ENTRY_AREA_MAP_SIZE - PAGE_SIZE) / CPU_ENTRY_AREA_SIZE;
 
 	/* O(sodding terrible) */
@@ -263,6 +257,8 @@ static __init void setup_cpu_entry_area_ptes(void)
 void __init setup_cpu_entry_areas(void)
 {
 	unsigned int cpu;
+
+	init_cea_offsets();
 
 	init_cea_offsets();
 
