@@ -147,7 +147,7 @@ static int bpf_fd_sk_storage_update_elem(struct bpf_map *map, void *key,
 	return err;
 }
 
-static int bpf_fd_sk_storage_delete_elem(struct bpf_map *map, void *key)
+static long bpf_fd_sk_storage_delete_elem(struct bpf_map *map, void *key)
 {
 	struct socket *sock;
 	int fd, err;

@@ -250,7 +250,7 @@ static int queue_stack_map_update_elem(struct bpf_map *map, void *key,
 }
 
 /* Called from syscall or from eBPF program */
-static int queue_stack_map_delete_elem(struct bpf_map *map, void *key)
+static long queue_stack_map_delete_elem(struct bpf_map *map, void *key)
 {
 	return -EINVAL;
 }

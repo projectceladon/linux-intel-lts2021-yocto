@@ -194,7 +194,7 @@ static int task_storage_delete(struct task_struct *task, struct bpf_map *map)
 	return 0;
 }
 
-static int bpf_pid_task_storage_delete_elem(struct bpf_map *map, void *key)
+static long bpf_pid_task_storage_delete_elem(struct bpf_map *map, void *key)
 {
 	struct task_struct *task;
 	unsigned int f_flags;

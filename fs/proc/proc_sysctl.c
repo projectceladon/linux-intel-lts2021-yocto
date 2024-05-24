@@ -19,6 +19,10 @@
 #include <linux/kmemleak.h>
 #include "internal.h"
 
+#define list_for_each_table_entry(i, entry, header)	\
+	entry = header->ctl_table;			\
+	for (i = 0 ; i < header->ctl_table_size && entry->procname; ++i, entry++)
+
 static const struct dentry_operations proc_sys_dentry_operations;
 static const struct file_operations proc_sys_file_operations;
 static const struct inode_operations proc_sys_inode_operations;
@@ -58,6 +62,11 @@ struct ctl_table_header *register_sysctl_mount_point(const char *path)
 	return register_sysctl(path, sysctl_mount_point);
  }
  EXPORT_SYMBOL(register_sysctl_mount_point);
+
+ #define sysctl_is_perm_empty_ctl_header(hptr)		\
+	(hptr->type == SYSCTL_TABLE_TYPE_PERMANENTLY_EMPTY)
+#define sysctl_set_perm_empty_ctl_header(hptr)		\
+	(hptr->type = SYSCTL_TABLE_TYPE_PERMANENTLY_EMPTY)
 
 void proc_sys_poll_notify(struct ctl_table_poll *poll)
 {
@@ -221,6 +230,7 @@ static void erase_header(struct ctl_table_header *head)
 static int insert_header(struct ctl_dir *dir, struct ctl_table_header *header)
 {
 	struct ctl_table *entry;
+	struct ctl_table_header *dir_h = &dir->header;
 	int err;
 
 	/* Is this a permanently empty directory? */
@@ -228,11 +238,10 @@ static int insert_header(struct ctl_dir *dir, struct ctl_table_header *header)
 		return -EROFS;
 
 	/* Am I creating a permanently empty directory? */
-	if (header->ctl_table_size > 0 &&
-	    sysctl_is_perm_empty_ctl_table(header->ctl_table)) {
+	if (sysctl_is_perm_empty_ctl_header(header)) {
 		if (!RB_EMPTY_ROOT(&dir->root))
 			return -EINVAL;
-		set_empty_dir(dir);
+		sysctl_set_perm_empty_ctl_header(dir_h);
 	}
 
 	dir->header.nreg++;
@@ -1200,17 +1209,19 @@ static struct ctl_table_header *new_links(struct ctl_dir *dir, struct ctl_table 
 }
 
 static bool get_links(struct ctl_dir *dir,
-	struct ctl_table *table, struct ctl_table_root *link_root)
+		      struct ctl_table_header *header,
+		      struct ctl_table_root *link_root)
 {
 	struct ctl_table_header *head;
 	struct ctl_table *entry, *link;
+	size_t i;
 
 	if (header->ctl_table_size == 0 ||
-	    sysctl_is_perm_empty_ctl_table(header->ctl_table))
+	    sysctl_is_perm_empty_ctl_header(header))
 		return true;
 
 	/* Are there links available for every entry in table? */
-	for (entry = table; entry->procname; entry++) {
+	list_for_each_table_entry(i, entry, header) {
 		const char *procname = entry->procname;
 		link = find_entry(&head, dir, procname, strlen(procname));
 		if (!link)
@@ -1223,7 +1234,7 @@ static bool get_links(struct ctl_dir *dir,
 	}
 
 	/* The checks passed.  Increase the registration count on the links */
-	for (entry = table; entry->procname; entry++) {
+	list_for_each_table_entry(i, entry, header) {
 		const char *procname = entry->procname;
 		link = find_entry(&head, dir, procname, strlen(procname));
 		head->nreg++;
@@ -1245,7 +1256,7 @@ static int insert_links(struct ctl_table_header *head)
 	if (IS_ERR(core_parent))
 		return 0;
 
-	if (get_links(core_parent, head->ctl_table, head->root))
+	if (get_links(core_parent, head, head->root))
 		return 0;
 
 	core_parent->header.nreg++;
@@ -1259,7 +1270,7 @@ static int insert_links(struct ctl_table_header *head)
 		goto out;
 
 	err = 0;
-	if (get_links(core_parent, head->ctl_table, head->root)) {
+	if (get_links(core_parent, head, head->root)) {
 		kfree(links);
 		goto out;
 	}

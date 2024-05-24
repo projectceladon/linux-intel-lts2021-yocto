@@ -993,6 +993,7 @@ struct file {
 	struct path		f_path;
 	struct inode		*f_inode;	/* cached value */
 	const struct file_operations	*f_op;
+	unsigned int            f_iocb_flags;
 
 	/*
 	 * Protects f_ep, f_flags.

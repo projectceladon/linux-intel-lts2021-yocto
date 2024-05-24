@@ -469,6 +469,7 @@ static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 	u64 cutime, cstime, cgtime, utime, stime, gtime;
 	unsigned long rsslim = 0;
 	unsigned long flags;
+	int exit_code = task->exit_code;
 	struct signal_struct *sig = task->signal;
 	unsigned int seq = 1;
 

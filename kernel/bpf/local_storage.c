@@ -349,7 +349,7 @@ static void cgroup_storage_map_free(struct bpf_map *_map)
 	kfree(map);
 }
 
-static int cgroup_storage_delete_elem(struct bpf_map *map, void *key)
+static long cgroup_storage_delete_elem(struct bpf_map *map, void *key)
 {
 	return -EINVAL;
 }

@@ -483,7 +483,7 @@ unlock:
 	return err;
 }
 
-static int bpf_struct_ops_map_delete_elem(struct bpf_map *map, void *key)
+static long bpf_struct_ops_map_delete_elem(struct bpf_map *map, void *key)
 {
 	enum bpf_struct_ops_state prev_state;
 	struct bpf_struct_ops_map *st_map;

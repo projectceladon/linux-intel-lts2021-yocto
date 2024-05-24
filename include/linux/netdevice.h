@@ -5550,4 +5550,5 @@ extern struct list_head ptype_base[PTYPE_HASH_SIZE] __read_mostly;
 
 extern struct net_device *blackhole_netdev;
 
+#define DEV_STATS_INC(DEV, FIELD)
 #endif	/* _LINUX_NETDEVICE_H */
