@@ -303,7 +303,7 @@ int tp_kthread_ack(void *data)
 				__func__, fpd_dp_ser_ready(),
 				READ_ONCE(priv->initialized));
 		fpd_dp_ser_unlock_global();
-		msleep(500);
+		msleep(100);
 	}
 	pr_debug("%s: kthread stopped\n", __func__);
 	return 0;
@@ -512,8 +512,6 @@ retry:
 		msleep(50);
 		goto retry;
 	}
-
-	msleep(5000);
 
 	ret = tp_serdes_irq_init(priv);
 	if (ret < 0) {
