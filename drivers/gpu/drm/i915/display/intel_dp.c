@@ -92,7 +92,6 @@
 #define INTEL_DP_RESOLUTION_FAILSAFE	(3 << INTEL_DP_RESOLUTION_SHIFT_MASK)
 
 #define I2C_MCU_ADDRESS					0x78
-
 extern int deser_reset;
 
 /* Constants for DP DSC configurations */
@@ -5577,15 +5576,12 @@ bool intel_dp_ser_write_reg(struct drm_device *dev, struct i2c_adapter *adapter,
 	int ret = 0;
 	struct i2c_msg msg;
 	u8 buf[2];
-
 	buf[0] = reg_addr & 0xff;
 	buf[1] = val;
-
 	msg.addr = 0x30;
 	msg.flags = 0;
 	msg.buf = &buf[0];
 	msg.len = 2;
-
 	ret = i2c_transfer(adapter, &msg, 1);
 	if (ret < 0) {
 		drm_err(dev, "[FPD_DP] [-%s-%s-%d-], fail client->addr=0x%02x, reg_addr=0x%02x, val=0x%02x\n",
@@ -5611,29 +5607,38 @@ static void mcu_set_backlight(const struct drm_connector_state *conn_state, u32 
 
 	u16 data = 0;
 
-	fpd_dp_ser_lock_global();
-	if (!READ_ONCE(deser_reset)) {
-		/*
-		 * TODO: 984 reset to avoid serdes panel black screen,
-		 * the following should handle 984 reset accoding to panel
-		 * status
-		 */
-		intel_dp_ser_write_reg(dev, i2c_adap_mcu,  0x01, 0x01);
-		usleep_range(20000, 22000);
-		WRITE_ONCE(deser_reset, 1);
-		drm_dbg_kms(dev, "[FPD_DP] 984 reset");
-	}
-
-	panel->backlight.level = level;
-
 	data = 0x0200 | level;
-	intel_dp_mcu_write_reg(dev, i2c_adap_mcu, 0x22, data);
-	fpd_dp_ser_unlock_global();
 
-	drm_dbg_kms(dev,
-		"[CONNECTOR:%d:%s] level = 0x%2x\n",
-		to_intel_connector(conn_state->connector)->base.base.id,
-		to_intel_connector(conn_state->connector)->base.name, level);
+	fpd_dp_ser_lock_global();
+
+	if (fpd_dp_ser_ready()) {
+		if (!READ_ONCE(deser_reset)) {
+			/*
+			 * TODO: 984 reset to avoid serdes panel black screen,
+			 * the following should handle 984 reset accoding to panel
+			 * status
+			 */
+			intel_dp_ser_write_reg(dev, i2c_adap_mcu,  0x01, 0x01);
+			msleep(40);
+			WRITE_ONCE(deser_reset, 1);
+			drm_dbg_kms(dev, "[FPD_DP] 984 reset");
+		}
+
+		drm_dbg_kms(dev, "[CONNECTOR:%d:%s] backlight level = 0x%2x\n",
+			to_intel_connector(conn_state->connector)->base.base.id,
+			to_intel_connector(conn_state->connector)->base.name,
+			level);
+		if (intel_dp_mcu_write_reg(dev, i2c_adap_mcu, 0x22, data))
+			panel->backlight.level = level;
+		else
+			drm_err(dev, "failed write backlight level\n");
+	} else {
+		drm_dbg_kms(dev, "[CONNECTOR:%d:%s] skip setting backlight "
+			"because serdes is not ready\n",
+			to_intel_connector(conn_state->connector)->base.base.id,
+			to_intel_connector(conn_state->connector)->base.name);
+	}
+	fpd_dp_ser_unlock_global();
 }
 
 static void mcu_disable_backlight(const struct drm_connector_state *conn_state, u32 level)
@@ -5643,7 +5648,10 @@ static void mcu_disable_backlight(const struct drm_connector_state *conn_state, 
 	u16 data = 0;
 
 	data = 0x0100 | panel->backlight.level;
-	intel_dp_mcu_write_reg(dev, i2c_adap_mcu, 0x22, data);
+	fpd_dp_ser_lock_global();
+	if (fpd_dp_ser_ready())
+		intel_dp_mcu_write_reg(dev, i2c_adap_mcu, 0x22, data);
+	fpd_dp_ser_unlock_global();
 }
 
 static void mcu_enable_backlight(const struct intel_crtc_state *crtc_state,
