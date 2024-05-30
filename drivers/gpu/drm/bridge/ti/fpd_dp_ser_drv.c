@@ -348,8 +348,8 @@ void fpd_dp_ser_reset(struct i2c_client *client)
 void fpd_dp_ser_set_up_variables(struct i2c_client *client)
 {
 	/* i2c 400k */
-	fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
-	fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
+	//fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
+	//fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
 
 	fpd_dp_ser_write_reg(client, 0x70, FPD_DP_SER_RX_ADD_A);
 	fpd_dp_ser_write_reg(client, 0x78, FPD_DP_SER_RX_ADD_A);
@@ -1488,8 +1488,8 @@ int fpd_dp_deser_984_override_efuse(struct i2c_client *client)
 	else
 		fpd_dp_ser_debug("[FPD_DP] Deserializer detected successfully\n");
 	/* i2c 400k */
-	fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
-	fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
+	//fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
+	//fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
 
 	fpd_dp_ser_write_reg(client, 0x49, 0xc);
 	fpd_dp_ser_write_reg(client, 0x4a, 0x0);
