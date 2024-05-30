@@ -2247,10 +2247,10 @@ static int fpd_dp_ser_suspend(struct device *dev)
 	fpd_dp_ser_lock_global();
 	fpd_dp_ser_set_ready(false);
 	/* first des reset, and then ser reset */
-	fpd_dp_ser_write_reg(priv->priv_dp_client[0], 0x01, 0x01);
+	fpd_dp_ser_write_reg(priv->priv_dp_client[1], 0x01, 0x01);
 	/* after reset, wait 20ms to avoid ser/des read/write fail */
 	usleep_range(20000, 22000);
-	fpd_dp_ser_reset(priv->priv_dp_client[1]);
+	fpd_dp_ser_reset(priv->priv_dp_client[0]);
 	usleep_range(20000, 22000);
 	fpd_dp_ser_unlock_global();
 #endif
