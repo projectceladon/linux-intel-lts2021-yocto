@@ -303,7 +303,7 @@ int tp_kthread_ack(void *data)
 				__func__, fpd_dp_ser_ready(),
 				READ_ONCE(priv->initialized));
 		fpd_dp_ser_unlock_global();
-		msleep(500);
+		msleep(100);
 	}
 	pr_debug("%s: kthread stopped\n", __func__);
 	return 0;
@@ -504,6 +504,8 @@ static void tp_init_work(struct work_struct *work)
 	struct tp_priv *priv = &global_tp;
 	int ret;
 
+	/* Give serdes driver a chance to run first. */
+	msleep(10);
 retry:
 	fpd_dp_ser_lock_global();
 	if (!fpd_dp_ser_ready()) {
@@ -512,8 +514,6 @@ retry:
 		msleep(50);
 		goto retry;
 	}
-
-	msleep(5000);
 
 	ret = tp_serdes_irq_init(priv);
 	if (ret < 0) {
@@ -617,11 +617,6 @@ static int ef1e_tp_resume(struct device *dev)
 
 	queue_work(priv->init_wq, &priv->init_work);
 
-	if (priv->polling)
-		ret = tp_kthread_polling_create(priv);
-	else
-		ret = tp_gpio_irq_init(priv);
-
 	return ret;
 }
 
@@ -633,12 +628,6 @@ static int ef1e_tp_suspend(struct device *dev)
 
 	WRITE_ONCE(priv->initialized, 0);
 	dev_info(dev, "%s: set initialized to false\n", __func__);
-	if (priv->polling) {
-		if (priv->polling_kthread)
-			kthread_stop(priv->polling_kthread);
-	} else {
-		tp_gpio_irq_destroy(priv);
-	}
 	return 0;
 }
 
