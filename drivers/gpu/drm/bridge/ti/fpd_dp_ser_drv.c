@@ -2102,7 +2102,7 @@ static void fpd_dp_motor_setup_work(struct work_struct *work)
 bool fpd_dp_ser_init(void)
 {
 	fpd_dp_ser_lock_global();
-	fpd_dp_ser_983_enable();
+	fpd_dp_ser_enable();
 
 	/* Check if VP is synchronized to DP input */
 	fpd_poll_984_training();
