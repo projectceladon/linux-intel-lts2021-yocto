@@ -688,11 +688,8 @@ int fpd_dp_ser_configue_enable_983_plls(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x42,0x00);
 
 	/* soft reset Ser */
-	fpd_dp_ser_lock_global();
 	fpd_dp_ser_write_reg(client, 0x01,0x01);
 	msleep(40);
-	fpd_dp_ser_unlock_global();
-
 
 	return 0;
 }
@@ -725,10 +722,8 @@ int fpd_dp_deser_soft_983_reset(struct i2c_client *client)
 {
 	u8 des_read = 0;
 
-	fpd_dp_ser_lock_global();
 	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
 	msleep(40);
-	fpd_dp_ser_unlock_global();
 
 	/* Select write to port0 reg */
 	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x2d, 0x01);
@@ -1704,10 +1699,8 @@ int fpd_dp_deser_984_override_efuse(struct i2c_client *client)
 		fpd_dp_ser_write_reg(client, 0x41, 0x71);
 		fpd_dp_ser_write_reg(client, 0x42, 0x26);
 		/* Soft Reset DES */
-		fpd_dp_ser_lock_global();
 		fpd_dp_ser_write_reg(client, 0x1, 0x1);
 		msleep(40);
-		fpd_dp_ser_unlock_global();
 	}
 
 	return 0;
@@ -2113,6 +2106,7 @@ static void fpd_dp_motor_setup_work(struct work_struct *work)
 
 bool fpd_dp_ser_init(void)
 {
+	fpd_dp_ser_lock_global();
 	fpd_dp_ser_983_enable();
 
 	/* Check if VP is synchronized to DP input */
@@ -2121,6 +2115,7 @@ bool fpd_dp_ser_init(void)
 	fpd_dp_ser_set_up_mcu(fpd_dp_priv->priv_dp_client[0]);
 
 	fpd_dp_ser_set_ready(true);
+	fpd_dp_ser_unlock_global();
 
 	queue_work(fpd_dp_priv->motor_setup_wq, &fpd_dp_priv->motor_setup_work);
 
