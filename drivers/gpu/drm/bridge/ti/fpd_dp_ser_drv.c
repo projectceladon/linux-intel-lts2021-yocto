@@ -347,10 +347,6 @@ void fpd_dp_ser_reset(struct i2c_client *client)
  */
 void fpd_dp_ser_set_up_variables(struct i2c_client *client)
 {
-	/* i2c 400k */
-	fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
-	fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
-
 	fpd_dp_ser_write_reg(client, 0x70, FPD_DP_SER_RX_ADD_A);
 	fpd_dp_ser_write_reg(client, 0x78, FPD_DP_SER_RX_ADD_A);
 	fpd_dp_ser_write_reg(client, 0x88, 0x0);
@@ -725,7 +721,7 @@ int fpd_dp_deser_soft_983_reset(struct i2c_client *client)
 	u8 des_read = 0;
 
 	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
-	msleep(40);
+	msleep(50);
 
 	/* Select write to port0 reg */
 	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x2d, 0x01);
@@ -1487,9 +1483,6 @@ int fpd_dp_deser_984_override_efuse(struct i2c_client *client)
 		fpd_dp_ser_debug("[FPD_DP] Error - no DES detected\n");
 	else
 		fpd_dp_ser_debug("[FPD_DP] Deserializer detected successfully\n");
-	/* i2c 400k */
-	fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
-	fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
 
 	fpd_dp_ser_write_reg(client, 0x49, 0xc);
 	fpd_dp_ser_write_reg(client, 0x4a, 0x0);
@@ -1702,7 +1695,7 @@ int fpd_dp_deser_984_override_efuse(struct i2c_client *client)
 		fpd_dp_ser_write_reg(client, 0x42, 0x26);
 		/* Soft Reset DES */
 		fpd_dp_ser_write_reg(client, 0x1, 0x1);
-		msleep(40);
+		msleep(50);
 	}
 
 	return 0;
@@ -2070,6 +2063,12 @@ static bool fpd_dp_ser_read_display_startup_status(struct i2c_client *client)
 	}
 
 out:
+	/* i2c speed 400k */
+	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x2b, 0x0a);
+	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x2c, 0x0b);
+	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x2b, 0x0a);
+	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x2c, 0x0b);
+
 	fpd_dp_ser_unlock_global();
 	return status;
 }
@@ -2247,9 +2246,18 @@ static int fpd_dp_ser_suspend(struct device *dev)
 	fpd_dp_ser_set_ready(false);
 	/* first des reset, and then ser reset */
 	fpd_dp_ser_write_reg(priv->priv_dp_client[1], 0x01, 0x01);
+
 	/* after reset, wait 20ms to avoid ser/des read/write fail */
 	usleep_range(20000, 22000);
+	/* i2c speed reset */
+	fpd_dp_ser_write_reg(priv->priv_dp_client[1], 0x2b, 0x7f);
+	fpd_dp_ser_write_reg(priv->priv_dp_client[1], 0x2c, 0x7f);
+
 	fpd_dp_ser_reset(priv->priv_dp_client[0]);
+
+	/* i2c speed reset */
+	fpd_dp_ser_write_reg(priv->priv_dp_client[0], 0x2b, 0x7f);
+	fpd_dp_ser_write_reg(priv->priv_dp_client[0], 0x2c, 0x7f);
 	usleep_range(20000, 22000);
 	fpd_dp_ser_unlock_global();
 
