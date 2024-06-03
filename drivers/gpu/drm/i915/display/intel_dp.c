@@ -93,8 +93,6 @@
 
 #define I2C_MCU_ADDRESS					0x78
 
-extern int deser_reset;
-
 /* Constants for DP DSC configurations */
 static const u8 valid_dsc_bpp[] = {6, 8, 10, 12, 15};
 
