@@ -504,6 +504,8 @@ static void tp_init_work(struct work_struct *work)
 	struct tp_priv *priv = &global_tp;
 	int ret;
 
+	/* Give serdes driver a chance to run first. */
+	msleep(10);
 retry:
 	fpd_dp_ser_lock_global();
 	if (!fpd_dp_ser_ready()) {
