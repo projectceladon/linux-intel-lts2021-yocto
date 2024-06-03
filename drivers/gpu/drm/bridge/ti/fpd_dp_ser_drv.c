@@ -1987,14 +1987,12 @@ static int intel_get_i2c_bus_id(int adapter_id, char *adapter_bdf, int bdf_len)
 	if (!adapter_bdf || bdf_len > 32)
 		return -1;
 
-	while (retry_count < 100) {
+	while (retry_count++ < 100) {
 		i = 0;
-		found = 0;
 		while ((adapter = i2c_get_adapter(i)) != NULL) {
 			parent = adapter->dev.parent;
 			pp = parent->parent;
 			i2c_put_adapter(adapter);
-			fpd_dp_ser_debug("[FPD_DP] dev_name(pp): %s\n", dev_name(pp));
 			if (pp && !strncmp(adapter_bdf, dev_name(pp), bdf_len)) {
 				found = 1;
 				break;
@@ -2004,16 +2002,12 @@ static int intel_get_i2c_bus_id(int adapter_id, char *adapter_bdf, int bdf_len)
 
 		if (found) {
 			fpd_dp_ser_debug("[FPD_DP] found dev_name(pp) %s\n", dev_name(pp));
-			break;
+			return i;
 		}
-		retry_count++;
-		fpd_dp_ser_debug("[FPD_DP] not found retry_count %d\n", retry_count);
 		msleep(50);
 	}
 
-	if (found)
-		return i;
-
+	fpd_dp_ser_err("%s: cannot find i2c adapter\n", __func__);
 	/* Not found */
 	return -1;
 }
@@ -2021,8 +2015,7 @@ static int intel_get_i2c_bus_id(int adapter_id, char *adapter_bdf, int bdf_len)
 int fpd_dp_ser_get_i2c_bus_number(void)
 {
 	char adapter_bdf[32] = ADAPTER_PP_DEV_NAME;
-	int bus_number = intel_get_i2c_bus_id(0, adapter_bdf, 32);
-	return bus_number;
+	return intel_get_i2c_bus_id(0, adapter_bdf, 32);
 }
 EXPORT_SYMBOL_GPL(fpd_dp_ser_get_i2c_bus_number);
 
