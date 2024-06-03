@@ -84,7 +84,6 @@
 static struct platform_device *pdev;
 struct fpd_dp_ser_priv *fpd_dp_priv;
 struct i2c_adapter *i2c_adap_mcu;
-int deser_reset;
 
 static bool deser_ready = false;
 /*
@@ -2071,8 +2070,6 @@ bool fpd_dp_ser_init(void)
 	/* Check if VP is synchronized to DP input */
 	fpd_poll_984_training();
 
-	WRITE_ONCE(deser_reset, 0);
-
 	fpd_dp_ser_set_up_mcu(fpd_dp_priv->priv_dp_client[0]);
 
 	fpd_dp_ser_set_ready(true);
@@ -2331,7 +2328,6 @@ void __exit fpd_dp_ser_module_exit(void)
 }
 
 EXPORT_SYMBOL(i2c_adap_mcu);
-EXPORT_SYMBOL(deser_reset);
 
 #ifdef MODULE
 module_init(fpd_dp_ser_module_init);
