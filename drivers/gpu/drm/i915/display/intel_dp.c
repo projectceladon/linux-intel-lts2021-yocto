@@ -5584,17 +5584,25 @@ static void mcu_set_backlight(const struct drm_connector_state *conn_state, u32 
 
 	u16 data = 0;
 
-	panel->backlight.level = level;
-
 	data = 0x0200 | level;
-	fpd_dp_ser_lock_global();
-	intel_dp_mcu_write_reg(dev, i2c_adap_mcu, 0x22, data);
-	fpd_dp_ser_unlock_global();
 
-	drm_dbg_kms(dev,
-		"[CONNECTOR:%d:%s] level = 0x%2x\n",
-		to_intel_connector(conn_state->connector)->base.base.id,
-		to_intel_connector(conn_state->connector)->base.name, level);
+	fpd_dp_ser_lock_global();
+	if (fpd_dp_ser_ready()) {
+		drm_dbg_kms(dev, "[CONNECTOR:%d:%s] backlight level = 0x%2x\n",
+			to_intel_connector(conn_state->connector)->base.base.id,
+			to_intel_connector(conn_state->connector)->base.name,
+			level);
+		if (intel_dp_mcu_write_reg(dev, i2c_adap_mcu, 0x22, data))
+			panel->backlight.level = level;
+		else
+			drm_err(dev, "failed write backlight level\n");
+	} else {
+		drm_dbg_kms(dev, "[CONNECTOR:%d:%s] skip setting backlight "
+			"because serdes is not ready\n",
+			to_intel_connector(conn_state->connector)->base.base.id,
+			to_intel_connector(conn_state->connector)->base.name);
+	}
+	fpd_dp_ser_unlock_global();
 }
 
 static void mcu_disable_backlight(const struct drm_connector_state *conn_state, u32 level)
@@ -5605,8 +5613,9 @@ static void mcu_disable_backlight(const struct drm_connector_state *conn_state, 
 
 	data = 0x0100 | panel->backlight.level;
 	fpd_dp_ser_lock_global();
-	intel_dp_mcu_write_reg(dev, i2c_adap_mcu, 0x22, data);
-	fpd_dp_ser_unlock_global()
+	if (fpd_dp_ser_ready())
+		intel_dp_mcu_write_reg(dev, i2c_adap_mcu, 0x22, data);
+	fpd_dp_ser_unlock_global();
 }
 
 static void mcu_enable_backlight(const struct intel_crtc_state *crtc_state,
