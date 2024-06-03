@@ -2236,25 +2236,19 @@ static int fpd_dp_ser_remove(struct platform_device *pdev) {
 
 static int fpd_dp_ser_suspend(struct device *dev)
 {
-#if 1
 	int i = 0;
 	struct fpd_dp_ser_priv *priv = dev_get_drvdata(dev);
 
 	fpd_dp_ser_lock_global();
 	fpd_dp_ser_set_ready(false);
 	/* first des reset, and then ser reset */
-	for (i = 1; i > -1; i--) {
-		struct i2c_client *client= priv->priv_dp_client[i];
-		if (i == 0)
-			fpd_dp_ser_reset(client);
-		else
-			fpd_dp_ser_write_reg(client, 0x01, 0x01);
-
-		/* after reset, wait 20ms to avoid ser/des read/write fail */
-		usleep_range(20000, 22000);
-	}
+	fpd_dp_ser_write_reg(priv->priv_dp_client[1], 0x01, 0x01);
+	/* after reset, wait 20ms to avoid ser/des read/write fail */
+	usleep_range(20000, 22000);
+	fpd_dp_ser_reset(priv->priv_dp_client[0]);
+	usleep_range(20000, 22000);
 	fpd_dp_ser_unlock_global();
-#endif
+
 	fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
 	return 0;	
 }
