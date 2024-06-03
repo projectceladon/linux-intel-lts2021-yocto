@@ -365,31 +365,44 @@ static void fpd_dp_ser_set_up_mcu(struct i2c_client *client)
 static void fpd_dp_ser_motor_open(struct i2c_client *client)
 {
 	u8 read_motor_mode[7] = { 0 };
-	u32 data_motor = 0;
+	const u32 data_motor = 0x0064ff;
 	int i = 0;
 
-	data_motor = 0x0064ff;
-	fpd_dp_mcu_motor_mode(client, 0x23, data_motor);
+	fpd_dp_ser_lock_global();
+	if (fpd_dp_ser_ready()) {
+		fpd_dp_mcu_motor_mode(client, 0x23, data_motor);
+		fpd_dp_mcu_read_reg(client, 0x63, 7, &read_motor_mode[0]);
+		for (i = 0; i < 7; i++)
+			fpd_dp_ser_debug("[FPD_DP] RIB [FPD_DP] RIB 0x78: 0x63,"
+				" read_motor_mode[%d] 0x%02x OK\n",
+				i, read_motor_mode[i]);
+	} else {
+		fpd_dp_ser_info("%s: skip motor open because serdes is not "
+				"ready\n", __func__);
+	}
+	fpd_dp_ser_unlock_global();
 
-	fpd_dp_mcu_read_reg(client, 0x63, 7, &read_motor_mode[0]);
-	for (i = 0; i < 7; i++)
-		fpd_dp_ser_debug("[FPD_DP] RIB [FPD_DP] RIB 0x78: 0x63, read_motor_mode[%d] 0x%02x OK\n",
-			i, read_motor_mode[i]);
 }
 
-void  fpd_dp_ser_motor_close(struct i2c_client *client)
+static void fpd_dp_ser_motor_close(struct i2c_client *client)
 {
 	u8 read_motor_mode[7] = { 0 };
-	u32 data_motor = 0;
+	const u32 data_motor = 0x0000ff;
 	int i = 0;
 
-	data_motor = 0x0000ff;
-	fpd_dp_mcu_motor_mode(client, 0x23, data_motor);
-
-	fpd_dp_mcu_read_reg(client, 0x63, 7, &read_motor_mode[0]);
-	for (i = 0; i < 7; i++)
-		fpd_dp_ser_debug("[FPD_DP] RIB [FPD_DP] RIB 0x78: 0x63, read_motor_mode[%d] 0x%02x OK\n",
-			i, read_motor_mode[i]);
+	fpd_dp_ser_lock_global();
+	if (fpd_dp_ser_ready()) {
+		fpd_dp_mcu_motor_mode(client, 0x23, data_motor);
+		fpd_dp_mcu_read_reg(client, 0x63, 7, &read_motor_mode[0]);
+		for (i = 0; i < 7; i++)
+			fpd_dp_ser_debug("[FPD_DP] RIB [FPD_DP] RIB 0x78: 0x63,"
+					" read_motor_mode[%d] 0x%02x OK\n",
+					i, read_motor_mode[i]);
+	} else {
+		fpd_dp_ser_info("%s: skip motor close because serdes is not "
+				"ready\n", __func__);
+	}
+	fpd_dp_ser_unlock_global();
 }
 
 /**
@@ -693,11 +706,6 @@ int fpd_dp_deser_soft_reset(struct i2c_client *client)
 	usleep_range(20000, 22000);
 	u8 des_read = 0;
 
-	/* Soft reset Des */
-	if (!fpd_dp_priv->priv_dp_client[1])
-		fpd_dp_priv->priv_dp_client[1] = i2c_new_dummy_device(fpd_dp_priv->i2c_adap, fpd_dp_i2c_board_info[1].addr);
-
-
 	if (fpd_dp_priv->priv_dp_client[1] != NULL) {
 		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
 		usleep_range(20000, 22000);
@@ -717,16 +725,10 @@ int fpd_dp_deser_soft_983_reset(struct i2c_client *client)
 {
 	u8 des_read = 0;
 
-	/* Soft reset Des */
-	if (!fpd_dp_priv->priv_dp_client[1])
-		fpd_dp_priv->priv_dp_client[1] = i2c_new_dummy_device(fpd_dp_priv->i2c_adap, fpd_dp_i2c_board_info[1].addr);
-
-	if (fpd_dp_priv->priv_dp_client[1] != NULL) {
-		fpd_dp_ser_lock_global();
-		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
-		msleep(40);
-		fpd_dp_ser_unlock_global();
-	}
+	fpd_dp_ser_lock_global();
+	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
+	msleep(40);
+	fpd_dp_ser_unlock_global();
 
 	/* Select write to port0 reg */
 	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x2d, 0x01);
@@ -2031,40 +2033,82 @@ int fpd_dp_ser_get_i2c_bus_number(void)
 }
 EXPORT_SYMBOL_GPL(fpd_dp_ser_get_i2c_bus_number);
 
-void wait_display_startup_done(struct i2c_client *client)
+static bool fpd_dp_ser_respond_dhu_startup_status(struct i2c_client *client)
+{
+	int ret;
+
+	ret = fpd_dp_mcu_write_reg(client,
+			           FPD_DP_SER_RESPOND_DHU_STARTUP_STATUS, 0x01);
+	if (ret < 0) {
+		fpd_dp_ser_err("%s: failed to write DHU statup status\n", __func__);
+		return false;
+	}
+	return true;
+}
+
+static bool fpd_dp_ser_read_display_startup_status(struct i2c_client *client)
+{
+	bool status = false;
+	uint8_t rdata[5] = { 0 };
+	int ret, i;
+
+	fpd_dp_ser_lock_global();
+	if (!fpd_dp_ser_ready()) {
+		fpd_dp_ser_debug("%s: wait for serdes\n", __func__);
+		goto out;
+	}
+
+	ret = fpd_dp_mcu_read_reg(fpd_dp_priv->priv_dp_client[2],
+				  FPD_DP_SER_RESPOND_DISPLAY_STARTUP_STATUS,
+				  5, &rdata[0]);
+	if (ret < 0) {
+		fpd_dp_ser_err("%s: failed to get display startup status\n", __func__);
+		goto out;
+	}
+
+	for (i = 0; i < 5; i++)
+		fpd_dp_ser_debug("[FPD_DP] RIB [FPD_DP] RIB 0x78: 0x61, rdata[%d] 0x%02x OK\n",
+				 i, rdata[i]);
+
+	if (rdata[0] == FPD_DP_SER_RESPOND_DISPLAY_STARTUP_STATUS) {
+		if (rdata[3] == 1) {
+			fpd_dp_ser_info("[FPD_DP] RIB DP2 UB943 display startup status: done\n");
+			status = fpd_dp_ser_respond_dhu_startup_status(client);
+		} else {
+			fpd_dp_ser_info("[FPD_DP] RIB DP2 UB943 display startup status: not done\n");
+		}
+	} else {
+		fpd_dp_ser_err("%s: not display startup status\n", __func__);
+	}
+
+out:
+	fpd_dp_ser_unlock_global();
+	return status;
+}
+
+static bool wait_display_startup_done(struct i2c_client *client)
 {
 	int ret;
 	int n = 0;
 	int i = 0;
-	uint8_t rdata[5] = { 0 };
-	uint8_t cmd_data = 0x01;
+	bool status;
 
 	while (++n < 100)
 	{
-		ret = fpd_dp_mcu_read_reg(fpd_dp_priv->priv_dp_client[2], 0x61, 5, &rdata[0]);
-
-		for (i=0; i < 5; i++)
-			pr_debug("[FPD_DP] RIB [FPD_DP] RIB 0x78: 0x61, rdata[%d] 0x%02x OK\n",
-				i, rdata[i]);
-
-		if (rdata[0] == 0x61 && rdata[3] == 1)
-		{
-			pr_info("[FPD_DP] RIB DP2 UB943 wait_display_startup_done sucess");
-			break;
-		}
+		if (fpd_dp_ser_read_display_startup_status(client))
+			return true;
 		usleep_range(5000, 5200);
 	}
 
-	ret = fpd_dp_mcu_write_reg(client, 0x21, cmd_data);
-	if (ret < 0)
-	{
-		ret = fpd_dp_mcu_write_reg(client, 0x21, cmd_data);
-		if (ret < 0)
-		{
-			pr_info("[FPD_DP] DP2 UB983 wait_display_startup_done error");
-			fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
-		}
-	}
+	fpd_dp_ser_err("%s: display startup status not ready\n", __func__);
+	return false;
+}
+
+/* This would be run in a workqueue. */
+static void fpd_dp_motor_setup_work(struct work_struct *work)
+{
+	if (wait_display_startup_done(fpd_dp_priv->priv_dp_client[2]))
+		fpd_dp_ser_motor_open(fpd_dp_priv->priv_dp_client[2]);
 }
 
 bool fpd_dp_ser_init(void)
@@ -2078,13 +2122,7 @@ bool fpd_dp_ser_init(void)
 
 	fpd_dp_ser_set_ready(true);
 
-	if (!fpd_dp_priv->priv_dp_client[2])
-		fpd_dp_priv->priv_dp_client[2] = i2c_new_dummy_device(fpd_dp_priv->i2c_adap, fpd_dp_i2c_board_info[2].addr);
-
-	fpd_dp_ser_lock_global();
-	wait_display_startup_done(fpd_dp_priv->priv_dp_client[2]);
-	fpd_dp_ser_motor_open(fpd_dp_priv->priv_dp_client[2]);
-	fpd_dp_ser_unlock_global();
+	queue_work(fpd_dp_priv->motor_setup_wq, &fpd_dp_priv->motor_setup_work);
 
 	return true;
 }
@@ -2094,53 +2132,63 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 	struct i2c_adapter *i2c_adap;
 	struct fpd_dp_ser_priv *priv;
 	int bus_number = 0;
-	int ret = 0;
+	int ret = 0, i;
 	unsigned char  __iomem *gpio_cfg;
 	unsigned char data;
 
-	priv = devm_kzalloc(&pdev->dev, sizeof(struct fpd_dp_ser_priv),
-			GFP_KERNEL);
-
+	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (priv == NULL) {
 		return -ENOMEM;
 	}
 
 	platform_set_drvdata(pdev, priv);
-
-	memset(priv, 0, sizeof(*priv));
 	priv->dev = &pdev->dev;
 
 	bus_number = fpd_dp_ser_get_i2c_bus_number();
 	fpd_dp_ser_debug("Use bus_number %d \n", bus_number);
 	i2c_adap = i2c_get_adapter(bus_number);
 	if (!i2c_adap) {
-		fpd_dp_ser_debug("Cannot find a valid i2c bus for max serdes\n");
-		return -ENOMEM;
+		fpd_dp_ser_err("Cannot find a valid i2c bus for max serdes\n");
+		ret = -ENODEV;
+		goto err_adapter;
 	}
 
 	/* retries when i2c timeout */
 	i2c_adap->retries = 5;
 	i2c_adap->timeout = msecs_to_jiffies(5 * 10);
-	i2c_put_adapter(i2c_adap);
 	priv->i2c_adap = i2c_adap;
 
 	i2c_adap_mcu = i2c_adap;
 
-	priv->priv_dp_client[0] = i2c_new_dummy_device(i2c_adap, fpd_dp_i2c_board_info[0].addr);
-	i2c_set_clientdata(priv->priv_dp_client[0], priv);
-
+	for (i = 0; i < ARRAY_SIZE(fpd_dp_i2c_board_info); ++i) {
+		priv->priv_dp_client[i] = i2c_new_dummy_device(i2c_adap, fpd_dp_i2c_board_info[i].addr);
+		if (IS_ERR(priv->priv_dp_client[i])) {
+			fpd_dp_ser_err("%s: failed to create i2c dummy device, addr = %d\n",
+				       __func__, fpd_dp_i2c_board_info[i].addr);
+			ret = -EBUSY;
+			goto err_i2c;
+		}
+		i2c_set_clientdata(priv->priv_dp_client[i], priv);
+	}
 	fpd_dp_priv = priv;
 
+	INIT_DELAYED_WORK(&fpd_dp_priv->delay_work, fpd_poll_training_lock);
 	fpd_dp_priv->wq = alloc_workqueue("fpd_poll_training_lock",
-			WQ_HIGHPRI, 0);
-
+					  WQ_HIGHPRI, 0);
 	if (unlikely(!fpd_dp_priv->wq)) {
 		fpd_dp_ser_debug("[FPD_DP] Failed to allocate workqueue\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_i2c;
 	}
 
-	INIT_DELAYED_WORK(&fpd_dp_priv->delay_work,
-			fpd_poll_training_lock);
+	INIT_WORK(&fpd_dp_priv->motor_setup_work, fpd_dp_motor_setup_work);
+	fpd_dp_priv->motor_setup_wq = alloc_workqueue("fpd_dp_motor_setup",
+						      WQ_HIGHPRI, 0);
+	if (IS_ERR_OR_NULL(fpd_dp_priv->motor_setup_wq)) {
+		dev_err(&pdev->dev, "failed to create motor setup wq\n");
+		ret = -ENOMEM;
+		goto err_motor_setup_wq;
+	}
 
 	fpd_dp_priv->count = 0;
 
@@ -2153,7 +2201,16 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 	msleep(100);
 
 	fpd_dp_ser_init();
+	return 0;
 
+err_motor_setup_wq:
+	destroy_workqueue(fpd_dp_priv->wq);
+err_i2c:
+	for (i = 0; i < ARRAY_SIZE(fpd_dp_i2c_board_info); ++i)
+		i2c_unregister_device(priv->priv_dp_client[i]);
+	i2c_put_adapter(i2c_adap);
+err_adapter:
+	devm_kfree(&pdev->dev, priv);
 	return ret;
 }
 
@@ -2166,7 +2223,7 @@ static int fpd_dp_ser_remove(struct platform_device *pdev) {
 		cancel_delayed_work_sync(&priv->delay_work);
 		fpd_dp_ser_lock_global();
 		fpd_dp_ser_set_ready(false);
-		for (i = 0; i < NUM_DEVICE; i++) {
+		for (i = 0; i < ARRAY_SIZE(fpd_dp_i2c_board_info); i++) {
 			struct i2c_client *client= priv->priv_dp_client[i];
 			if (i == 0)
 				fpd_dp_ser_reset(client);
@@ -2183,6 +2240,7 @@ static int fpd_dp_ser_remove(struct platform_device *pdev) {
 		devm_kfree(&pdev->dev, priv);
 		fpd_dp_ser_debug("[-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
 	}
+	i2c_put_adapter(i2c_adap_mcu);
 	return 0;
 }
 
