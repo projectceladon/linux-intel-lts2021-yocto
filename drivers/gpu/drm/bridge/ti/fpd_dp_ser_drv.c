@@ -73,6 +73,8 @@
 
 #define PAD_CFG_DW0_GPPC_A_16              0xfd6e0AA0
 
+#define fpd_dp_ser_err		pr_err
+#define fpd_dp_ser_info		pr_info
 #ifdef DEBUG
 #define fpd_dp_ser_debug	pr_info
 #else
@@ -1443,8 +1445,8 @@ bool fpd_dp_ser_983_setup(struct i2c_client *client)
 bool fpd_dp_ser_enable(void)
 {
 	fpd_dp_ser_prepare(fpd_dp_priv->priv_dp_client[0]);
-	if (false == fpd_dp_ser_setup(fpd_dp_priv->priv_dp_client[0])) {
-		fpd_dp_ser_debug("[FPD_DP] DS90UB983 enable fail\n");
+	if (!fpd_dp_ser_setup(fpd_dp_priv->priv_dp_client[0])) {
+		fpd_dp_ser_err("[FPD_DP] DS90UB983 enable fail\n");
 		return false;
 	}
 	return true;
@@ -1455,7 +1457,7 @@ bool fpd_dp_ser_983_enable(void)
 	fpd_dp_ser_set_up_variables(fpd_dp_priv->priv_dp_client[0]);
 
 	if (false == fpd_dp_ser_983_setup(fpd_dp_priv->priv_dp_client[0])) {
-		fpd_dp_ser_debug("[FPD_DP] DS90UB983 enable fail\n");
+		fpd_dp_ser_err("[FPD_DP] DS90UB983 enable fail\n");
 		return false;
 	}
 	return true;
