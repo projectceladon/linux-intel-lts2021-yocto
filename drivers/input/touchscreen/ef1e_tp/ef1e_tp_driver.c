@@ -615,11 +615,6 @@ static int ef1e_tp_resume(struct device *dev)
 
 	queue_work(priv->init_wq, &priv->init_work);
 
-	if (priv->polling)
-		ret = tp_kthread_polling_create(priv);
-	else
-		ret = tp_gpio_irq_init(priv);
-
 	return ret;
 }
 
@@ -631,12 +626,6 @@ static int ef1e_tp_suspend(struct device *dev)
 
 	WRITE_ONCE(priv->initialized, 0);
 	dev_info(dev, "%s: set initialized to false\n", __func__);
-	if (priv->polling) {
-		if (priv->polling_kthread)
-			kthread_stop(priv->polling_kthread);
-	} else {
-		tp_gpio_irq_destroy(priv);
-	}
 	return 0;
 }
 
