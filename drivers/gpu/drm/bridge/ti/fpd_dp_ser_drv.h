@@ -37,6 +37,9 @@
 #define FPD_DP_SER_RX_ADD_A                0x30
 #define FPD_DP_SER_MCU_ADD                 0x78
 
+#define FPD_DP_SER_RESPOND_DISPLAY_STARTUP_STATUS	0x61
+#define FPD_DP_SER_RESPOND_DHU_STARTUP_STATUS		0x21
+
 #define FPD_DP_ARRAY_SIZE                  4
 
 #define DS90UB983                          0
@@ -63,6 +66,8 @@ struct fpd_dp_ser_priv {
 	struct i2c_client *priv_dp_client[NUM_DEVICE];
 	struct delayed_work delay_work;
 	struct workqueue_struct *wq;
+	struct work_struct motor_setup_work;
+	struct workqueue_struct *motor_setup_wq;
 	int count;
 };
 
