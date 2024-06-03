@@ -192,7 +192,8 @@ bool fpd_dp_ser_write_reg(struct i2c_client *client, unsigned int reg_addr, u8 v
 	return true;
 }
 
-bool fpd_dp_mcu_motor_mode(struct i2c_client *client, unsigned int reg_addr, u32 val)
+bool
+fpd_dp_mcu_motor_mode(struct i2c_client *client, unsigned int reg_addr, u32 val)
 {
 	int ret = 0;
 	int i = 0;
@@ -215,8 +216,11 @@ bool fpd_dp_mcu_motor_mode(struct i2c_client *client, unsigned int reg_addr, u32
 	ret = i2c_transfer(client->adapter, &msg, 1);
 
 	if (ret < 0) {
-		fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-], fail client->addr=0x%02x, reg_addr=0x%02x, val=0x%03x\n",
-				__FILE__, __func__, __LINE__, msg.addr, reg_addr, val);
+		fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-] cannot set motor mode, "
+				"client->addr=0x%02x, reg_addr=0x%02x, "
+				"val=0x%03x\n",
+				__FILE__, __func__, __LINE__, msg.addr,
+				reg_addr, val);
 		return false;
 	}
 
@@ -350,7 +354,7 @@ void fpd_dp_ser_set_up_variables(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x88, 0x0);
 }
 
-void  fpd_dp_ser_set_up_mcu(struct i2c_client *client)
+static void fpd_dp_ser_set_up_mcu(struct i2c_client *client)
 {
 	fpd_dp_ser_write_reg(client, 0x70, FPD_DP_SER_MCU_ADD << 1);
 	fpd_dp_ser_write_reg(client, 0x78, FPD_DP_SER_MCU_ADD << 1);
@@ -358,7 +362,7 @@ void  fpd_dp_ser_set_up_mcu(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x07, 0x88);
 }
 
-void  fpd_dp_ser_motor_open(struct i2c_client *client)
+static void fpd_dp_ser_motor_open(struct i2c_client *client)
 {
 	u8 read_motor_mode[7] = { 0 };
 	u32 data_motor = 0;
@@ -2305,7 +2309,7 @@ int __init fpd_dp_ser_module_init(void)
 	int ret = 0;
 
 	pdev = platform_device_register_simple(DEV_NAME, -1, NULL, 0);
-	fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
+	fpd_dp_ser_debug("start initialization of %s\n", DEV_NAME);
 
 	if (!IS_ERR(pdev)) {
 		ret = platform_driver_probe(&fpd_dp_ser_driver,
