@@ -2027,6 +2027,32 @@ static bool fpd_dp_ser_respond_dhu_startup_status(struct i2c_client *client)
 	return true;
 }
 
+static bool fpd_dp_ser_display_startup_reset(void)
+{
+	unsigned char  __iomem *gpio_cfg;
+	unsigned char data;
+
+	gpio_cfg = (unsigned char *)ioremap(PAD_CFG_DW0_GPPC_A_16, 0x1);
+	data = ioread8(gpio_cfg);
+	data = data & 0xFE;
+	iowrite8(data, gpio_cfg);
+	iounmap(gpio_cfg);
+	/* Delay for VPs to sync to DP source */
+	msleep(1000);
+
+	gpio_cfg = (unsigned char *)ioremap(PAD_CFG_DW0_GPPC_A_16, 0x1);
+	data = ioread8(gpio_cfg);
+	data = data | 1;
+	iowrite8(data, gpio_cfg);
+	iounmap(gpio_cfg);
+	/* Delay for VPs to sync to DP source */
+	msleep(100);
+
+	fpd_dp_ser_init();
+
+	return true;
+}
+
 static bool fpd_dp_ser_read_display_startup_status(struct i2c_client *client)
 {
 	bool status = false;
@@ -2057,6 +2083,7 @@ static bool fpd_dp_ser_read_display_startup_status(struct i2c_client *client)
 			status = fpd_dp_ser_respond_dhu_startup_status(client);
 		} else {
 			fpd_dp_ser_info("[FPD_DP] RIB DP2 UB943 display startup status: not done\n");
+			status = fpd_dp_ser_display_startup_reset();
 		}
 	} else {
 		fpd_dp_ser_err("%s: not display startup status\n", __func__);
