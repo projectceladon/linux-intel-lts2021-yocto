@@ -5612,18 +5612,6 @@ static void mcu_set_backlight(const struct drm_connector_state *conn_state, u32 
 	fpd_dp_ser_lock_global();
 
 	if (fpd_dp_ser_ready()) {
-		if (!READ_ONCE(deser_reset)) {
-			/*
-			 * TODO: 984 reset to avoid serdes panel black screen,
-			 * the following should handle 984 reset accoding to panel
-			 * status
-			 */
-			intel_dp_ser_write_reg(dev, i2c_adap_mcu,  0x01, 0x01);
-			msleep(50);
-			WRITE_ONCE(deser_reset, 1);
-			drm_dbg_kms(dev, "[FPD_DP] 984 reset");
-		}
-
 		drm_dbg_kms(dev, "[CONNECTOR:%d:%s] backlight level = 0x%2x\n",
 			to_intel_connector(conn_state->connector)->base.base.id,
 			to_intel_connector(conn_state->connector)->base.name,
