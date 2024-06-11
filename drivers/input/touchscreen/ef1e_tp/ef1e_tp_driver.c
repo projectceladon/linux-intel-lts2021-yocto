@@ -48,10 +48,6 @@
 static int polling = 0;
 module_param(polling, int, 0);
 
-/* Force to go on even if we fail to create i2c dummy devices. */
-static int force_i2c_communication = 1;
-module_param(force_i2c_communication, int, 0);
-
 static int revert = 1;
 module_param(revert, int, 0);
 
