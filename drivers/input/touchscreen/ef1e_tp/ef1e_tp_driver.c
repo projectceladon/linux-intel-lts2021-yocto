@@ -51,7 +51,7 @@ module_param(polling, int, 0);
 static int revert = 1;
 module_param(revert, int, 0);
 
-static int ack_thread = 0;
+static int ack_thread = 1;
 module_param(ack_thread, int, 0);
 
 static struct tp_priv global_tp;
@@ -229,6 +229,7 @@ static void tp_irq_work(struct tp_priv *priv)
 
 	pr_debug("%s: try to obtain tp data\n", __func__);
 
+	priv->last_irq_time = ktime_get();
 	fpd_dp_ser_lock_global();
 
 	if (!fpd_dp_ser_ready() || !READ_ONCE(priv->initialized)) {
@@ -290,15 +291,20 @@ int tp_kthread_ack(void *data)
 
 	pr_debug("%s: kthread started\n", __func__);
 	while (!kthread_should_stop()) {
+		if (time_before(ktime_get(), ktime_add_ms(priv->last_irq_time, 1000))) {
+			msleep(50);
+			continue;
+		}
 		fpd_dp_ser_lock_global();
-		if (fpd_dp_ser_ready() && READ_ONCE(priv->initialized))
+		if (fpd_dp_ser_ready() && READ_ONCE(priv->initialized)) {
 			tp_ack_irq(priv);
-		else
+			priv->last_irq_time = ktime_get();
+		} else
 			pr_debug("%s: skip ack, ready = %d, initialized = %d\n",
 				__func__, fpd_dp_ser_ready(),
 				READ_ONCE(priv->initialized));
 		fpd_dp_ser_unlock_global();
-		msleep(50);
+		msleep(500);
 	}
 	pr_debug("%s: kthread stopped\n", __func__);
 	return 0;
@@ -521,6 +527,8 @@ retry:
 	/* Tick off the MCU to start reporting IRQ. */
 	tp_ack_irq(priv);
 	fpd_dp_ser_unlock_global();
+
+	priv->last_irq_time = ktime_get();
 }
 
 
