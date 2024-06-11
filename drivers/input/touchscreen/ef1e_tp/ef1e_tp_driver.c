@@ -197,7 +197,6 @@ static int tp_ack_irq(struct tp_priv *priv)
 	int ret = 0;
 
 	ret = fpd_read_reg_ind_force(adapter, ser_addr, 0x09, 0x8d, &value);
-	pr_debug("Ser INTR_STS_FPD4_PORT0 0x8d = 0x%x\n", value);
 
 	return ret;
 }
@@ -242,13 +241,13 @@ static void tp_irq_work(struct tp_priv *priv)
 		return;
 	}
 
+	tp_ack_irq(priv);
 	ret = tp_get_mcu_tp_data(priv, &report_data, command_id);
 	if (ret < 0) {
 		pr_err("%s: failed to get tp data\n", __func__);
 		fpd_dp_ser_unlock_global();
 		return;
 	}
-	tp_ack_irq(priv);
 	fpd_dp_ser_unlock_global();
 
 	if (report_data.command_id != TP_PROTOCOL_COMMAND_ID_TP_REPORT
@@ -429,10 +428,8 @@ static int tp_gpio_irq_init(struct tp_priv *priv)
 		return -EBUSY;
 	}
 	pr_debug("TP irq = %d\n", priv->tp_irq);
-	ret = request_threaded_irq(priv->tp_irq,
-				   NULL, tp_irq_handler,
-				   IRQF_TRIGGER_FALLING |
-				   IRQF_ONESHOT,
+	ret = request_threaded_irq(priv->tp_irq, NULL, tp_irq_handler,
+				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
 				   "ef1e_tp-irq", priv);
 	if (ret) {
 		pr_err("Failed to request edge IRQ for TP\n");
@@ -472,19 +469,21 @@ static int tp_serdes_irq_init(struct tp_priv *priv)
 	u16 des_addr = I2C_DES_ADDRESS;
 	int ret = 0;
 
-	ret |= fpd_write_reg_force(adapter, ser_addr, 0x51, 0x83); /* INTERRUPT_CTL */
-	ret |= fpd_write_reg_force(adapter, ser_addr, 0xc6, 0x21); /* FPD3_ICR */
-
+	/* INTERRUPT_CTL */
+	ret |= fpd_write_reg_force(adapter, ser_addr, 0x51, 0x83);
+	/* FPD3_ICR */
+	ret |= fpd_write_reg_force(adapter, ser_addr, 0xc6, 0x21);
 	/* Set IE_DES_INT for INTR_CTL_FPD4_PORT0 in page 9 */
 	ret |= fpd_write_reg_ind_force(adapter, ser_addr, 0x09, 0x8c, 0x30);
-
 	/* Set IE_DES_INT for INTR_CTL_FPD4_PORT1 in page 9 */
 	ret |= fpd_write_reg_ind_force(adapter, ser_addr, 0x09, 0x9c, 0x30);
 
+	/* Set IE_EN and IE_INTB_P0 for RX_INT_CTL */
 	ret |= fpd_write_reg_force(adapter, des_addr, 0x44, 0x81);
+	/* Set IE_LCL_INTB for LOCAL_INT_STS */
 	ret |= fpd_write_reg_force(adapter, des_addr, 0x45, 0x80);
+	/* Set IE_INTB_IN for INTERRUPT_CTL */
 	ret |= fpd_write_reg_force(adapter, des_addr, 0x52, 0x01);
-
 	/* Set IC_INTB_IN_P0 for INTB_ICR_P0 and INTB_ICR_P1 in page 1*/
 	/* IND_ACC_ADDR - INTB_ICR_P0 */
 	ret |= fpd_write_reg_ind_force(adapter, des_addr, 0x01, 0x7e, 0x03);
