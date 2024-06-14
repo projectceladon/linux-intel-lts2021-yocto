@@ -162,14 +162,14 @@ char fpd_dp_ser_read_reg(struct i2c_client *client, u8 reg_addr, u8 *val)
 	if (ret < 0) {
 		fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-], fail reg_addr=0x%x, val=%u\n",
 				__FILE__, __func__, __LINE__, reg_addr, *val);
-		return -ENODEV;
+		return -ENXIO;
 	}
 
 	fpd_dp_ser_debug("[FPD_DP] RIB 0x%02x: 0x%02x 0x%02x OK\n", client->addr, reg_addr, *val);
 	return 0;
 }
 
-bool fpd_dp_ser_write_reg(struct i2c_client *client, unsigned int reg_addr, u8 val)
+int fpd_dp_ser_write_reg(struct i2c_client *client, unsigned int reg_addr, u8 val)
 {
 	int ret = 0;
 	struct i2c_msg msg;
@@ -187,11 +187,11 @@ bool fpd_dp_ser_write_reg(struct i2c_client *client, unsigned int reg_addr, u8 v
 	if (ret < 0) {
 		fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-], fail client->addr=0x%02x, reg_addr=0x%02x, val=0x%02x\n",
 				__FILE__, __func__, __LINE__, client->addr, reg_addr, val);
-		return false;
+		return -ENXIO;
 	}
 	fpd_dp_ser_debug("[FPD_DP] WIB 0x%02x: 0x%02x 0x%02x OK\n",
 			client->addr, reg_addr, val);
-	return true;
+	return 0;
 }
 
 bool
@@ -1877,22 +1877,30 @@ void fpd_dp_deser_984_release_dtg_reset(struct i2c_client *client)
  * @brief Enable DP 0 output
  * @param client
  */
-void fpd_dp_deser_984_enable_output(struct i2c_client *client)
+static bool fpd_dp_deser_984_enable_output(struct i2c_client *client)
 {
+	int ret = 0;
+
 	fpd_dp_ser_debug("[FPD_DP] Enable DP 0 output\n");
-	fpd_dp_ser_write_reg(client, 0x48, 0x1);
+	ret |= fpd_dp_ser_write_reg(client, 0x48, 0x1);
 	/* Enable DP output */
-	fpd_dp_ser_write_reg(client, 0x49, 0x84);
-	fpd_dp_ser_write_reg(client, 0x4a, 0x0);
-	fpd_dp_ser_write_reg(client, 0x4b, 0x1);
-	fpd_dp_ser_write_reg(client, 0x4c, 0x0);
-	fpd_dp_ser_write_reg(client, 0x4d, 0x0);
-	fpd_dp_ser_write_reg(client, 0x4e, 0x0);
+	ret |= fpd_dp_ser_write_reg(client, 0x49, 0x84);
+	ret |= fpd_dp_ser_write_reg(client, 0x4a, 0x0);
+	ret |= fpd_dp_ser_write_reg(client, 0x4b, 0x1);
+	ret |= fpd_dp_ser_write_reg(client, 0x4c, 0x0);
+	ret |= fpd_dp_ser_write_reg(client, 0x4d, 0x0);
+	ret |= fpd_dp_ser_write_reg(client, 0x4e, 0x0);
 	/* Enable INTB_IN */
-	fpd_dp_ser_write_reg(client, 0x44, 0x81);
+	ret |= fpd_dp_ser_write_reg(client, 0x44, 0x81);
+	if (ret) {
+		fpd_dp_ser_err("%s: failed to enable output\n", __func__);
+		return false;
+	}
+
+	return true;
 }
 
-void fpd_dp_deser_984_enable(void)
+static bool fpd_dp_deser_984_enable(void)
 {
 	fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
 
@@ -1908,16 +1916,17 @@ void fpd_dp_deser_984_enable(void)
 	fpd_dp_deser_984_setup_dtg(fpd_dp_priv->priv_dp_client[1]);
 	fpd_dp_deser_984_setup_dptx(fpd_dp_priv->priv_dp_client[1]);
 	fpd_dp_deser_984_release_dtg_reset(fpd_dp_priv->priv_dp_client[1]);
-	fpd_dp_deser_984_enable_output(fpd_dp_priv->priv_dp_client[1]);
+	return fpd_dp_deser_984_enable_output(fpd_dp_priv->priv_dp_client[1]);
 }
 
 /**
  * @brief Check if VP is synchronized to DP input
  * @param work
  */
-static void fpd_poll_984_training(void)
+static bool fpd_poll_984_training(void)
 {
 	u8 VP0sts = 0;
+	int ret = 0;
 
 	fpd_dp_ser_debug("[FPD_DP] Check if VP is synchronized to DP input\n");
 
@@ -1925,25 +1934,33 @@ static void fpd_poll_984_training(void)
 	msleep(100);
 
 	/* Select VP Page */
-	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x40, 0x31);
-	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x41, 0x30);
-	fpd_dp_ser_read_reg(fpd_dp_priv->priv_dp_client[0], 0x42, &VP0sts);
+	ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x40, 0x31);
+	ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x41, 0x30);
+	ret |= fpd_dp_ser_read_reg(fpd_dp_priv->priv_dp_client[0], 0x42, &VP0sts);
+	if (ret) {
+		fpd_dp_ser_err("%s: failed to read VP0sts\n", __func__);
+		return false;
+	}
 	fpd_dp_ser_debug("[FPD_DP] VP0sts = 0x%02x\n", VP0sts);
 
 	if (VP0sts == 0) {
-		fpd_dp_ser_debug("[FPD_DP]  VPs not synchronized - performing video input reset\n");
+		fpd_dp_ser_debug("[FPD_DP] VPs not synchronized - performing video input reset\n");
 		/* Video Input Reset if VP is not synchronized */
-		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x49, 0x54);
-		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4a, 0x0);
-		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4b, 0x1);
-		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4c, 0x0);
-		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4d, 0x0);
-		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4e, 0x0);
+		ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x49, 0x54);
+		ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4a, 0x0);
+		ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4b, 0x1);
+		ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4c, 0x0);
+		ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4d, 0x0);
+		ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x4e, 0x0);
+		if (ret) {
+			fpd_dp_ser_err("%s: failed to do video input reset\n",
+				       __func__);
+			return false;
+		}
 	}
 
 	fpd_dp_ser_debug("[FPD_DP] ser training lock completed, count = %d\n", fpd_dp_priv->count);
-
-	fpd_dp_deser_984_enable();
+	return true;
 }
 
 void fpd_dp_deser_enable(void)
@@ -2101,10 +2118,21 @@ static void fpd_dp_motor_setup_work(struct work_struct *work)
 bool fpd_dp_ser_init(void)
 {
 	fpd_dp_ser_lock_global();
-	fpd_dp_ser_983_enable();
+	if (!fpd_dp_ser_983_enable()) {
+		fpd_dp_ser_unlock_global();
+		return false;
+	}
 
 	/* Check if VP is synchronized to DP input */
-	fpd_poll_984_training();
+	if (!fpd_poll_984_training()) {
+		fpd_dp_ser_unlock_global();
+		return false;
+	}
+
+	if (!fpd_dp_deser_984_enable()) {
+		fpd_dp_ser_unlock_global();
+		return false;
+	}
 
 	WRITE_ONCE(deser_reset, 0);
 
@@ -2191,7 +2219,11 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 	/* Delay for VPs to sync to DP source */
 	msleep(100);
 
-	fpd_dp_ser_init();
+	if (!fpd_dp_ser_init()) {
+		ret = -ENXIO;
+		goto err_motor_setup_wq;
+	}
+
 	return 0;
 
 err_motor_setup_wq:
