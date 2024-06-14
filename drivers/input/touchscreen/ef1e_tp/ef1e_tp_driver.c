@@ -420,7 +420,7 @@ static struct gpiod_lookup_table tp_gpio_table = {
 
 static int tp_gpio_irq_init(struct tp_priv *priv)
 {
-	int ret;
+	int irq, ret, retries = 10;
 
 	gpiod_add_lookup_table(&tp_gpio_table);
 	priv->tp_gpio = gpiod_get_index(NULL, "TP_IRQ", 86, GPIOD_IN);
@@ -428,18 +428,33 @@ static int tp_gpio_irq_init(struct tp_priv *priv)
 		pr_err("faied to get GPIO\n");
 		return -ENODEV;
 	}
-	priv->tp_irq = gpiod_to_irq(priv->tp_gpio);
-	if (priv->tp_irq <= 0) {
-		pr_err("failed to get IRQ\n");
+	irq = gpiod_to_irq(priv->tp_gpio);
+	if (irq <= 0) {
+		pr_err("%s: failed to get IRQ\n", __func__);
 		return -EBUSY;
 	}
-	pr_debug("TP irq = %d\n", priv->tp_irq);
-	ret = request_threaded_irq(priv->tp_irq, NULL, tp_irq_handler,
+
+retry:
+	if (retries-- <= 0) {
+		pr_err("%s: retry limit reached, abort\n", __func__);
+		return -ENODEV;
+	}
+
+	fpd_dp_ser_lock_global();
+	if (!fpd_dp_ser_ready()) {
+		fpd_dp_ser_unlock_global();
+		pr_info("%s: not ready, wait for 50ms\n", __func__);
+		msleep(50);
+		goto retry;
+	}
+
+	pr_debug("%s: TP irq = %d\n", __func__, irq);
+	ret = request_threaded_irq(irq, NULL, tp_irq_handler,
 				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
 				   "ef1e_tp-irq", priv);
 	if (ret) {
-		pr_err("Failed to request edge IRQ for TP\n");
-		return ret;
+		pr_err("%s: failed to request edge IRQ for TP\n", __func__);
+		goto out;
 	}
 	pr_debug("irq handler installed\n");
 
@@ -447,18 +462,24 @@ static int tp_gpio_irq_init(struct tp_priv *priv)
 		ret = tp_kthread_ack_create(priv);
 		if (ret) {
 			pr_err("%s: failed to create ack thread\n", __func__);
-			free_irq(priv->tp_irq, priv);
+			free_irq(irq, priv);
+			goto out;
 		}
 	}
 
+	priv->tp_irq = irq;
+out:
+	fpd_dp_ser_unlock_global();
 	return ret;
 }
 
 
 static void tp_gpio_irq_destroy(struct tp_priv *priv)
 {
-	if (priv->tp_irq > 0)
+	if (priv->tp_irq > 0) {
 		free_irq(priv->tp_irq, priv);
+		priv->tp_irq = 0;
+	}
 	if (priv->ack_kthread)
 		kthread_stop(priv->ack_kthread);
 	if (!IS_ERR_OR_NULL(priv->tp_gpio)) {
@@ -503,11 +524,16 @@ static int tp_serdes_irq_init(struct tp_priv *priv)
 static void tp_init_work(struct work_struct *work)
 {
 	struct tp_priv *priv = &global_tp;
-	int ret;
+	int ret, retries = 10;
 
 	/* Give serdes driver a chance to run first. */
 	msleep(10);
 retry:
+	if (retries-- <= 0) {
+		pr_err("%s: retry limit reached, abort\n", __func__);
+		return;
+	}
+
 	fpd_dp_ser_lock_global();
 	if (!fpd_dp_ser_ready()) {
 		fpd_dp_ser_unlock_global();
@@ -581,6 +607,7 @@ static int ef1e_tp_probe(struct platform_device *dev)
 	return 0;
 
 error:
+	tp_input_dev_destroy(priv);
 	if (priv->polling) {
 		if (priv->polling_kthread)
 			kthread_stop(priv->polling_kthread);
@@ -589,7 +616,7 @@ error:
 	}
 
 	i2c_put_adapter(priv->i2c_adap);
-	pr_err("error occured, initialization is aborted\n");
+	pr_err("error occurred, initialization is aborted\n");
 	return ret;
 }
 

@@ -53,21 +53,34 @@ int tp_input_dev_init(struct tp_priv *priv)
 	ret = input_mt_init_slots(priv->input_dev, TP_MAX_POINTS,
 				  INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED);
 	if (ret) {
-		pr_err("%s: Failed to initialize MT slots: %d\n", __func__, ret);
-		return ret;
+		pr_err("%s: failed to initialize MT slots: %d\n", __func__, ret);
+		goto err_init_slot;
 	}
 	ret = input_register_device(priv->input_dev);
 	if (ret) {
-		pr_err("%s: Failed to register input device\n", __func__);
-		return ret;
+		pr_err("%s: failed to register input device\n", __func__);
+		goto err_register;
 	}
 	return 0;
+
+err_register:
+	input_mt_destroy_slots(priv->input_dev);
+err_init_slot:
+	input_unregister_device(priv->input_dev);
+	return ret;
 }
 
 
 void tp_input_dev_destroy(struct tp_priv *priv)
 {
-	input_unregister_device(priv->input_dev);
+	struct input_dev *input_dev = priv->input_dev;
+
+	if (!priv->input_dev)
+		return;
+
+	priv->input_dev = NULL;
+	input_mt_destroy_slots(input_dev);
+	input_unregister_device(input_dev);
 }
 
 
