@@ -27,7 +27,6 @@
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/input/touchscreen.h>
-#include <linux/ktime.h>
 #include <linux/workqueue.h>
 
 #include "ef1e_tp_protocol.h"
@@ -50,7 +49,6 @@ struct tp_priv {
 	struct task_struct *polling_kthread;
 
 	struct input_dev *input_dev;
-	ktime_t last_irq_time;
 };
 
 #endif /* EF1E_TP_H */
