@@ -32,6 +32,8 @@
 
 #include "ef1e_tp_protocol.h"
 
+#define EF1E_TP_VERSION	"2024081801"
+
 #define TP_WIDTH  2880
 #define TP_HEIGHT 1620
 

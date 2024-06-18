@@ -573,6 +573,8 @@ static int ef1e_tp_probe(struct platform_device *dev)
 	struct i2c_adapter *i2c_adap;
 	struct tp_priv *priv = &global_tp;
 
+	pr_info("%s: version = %s\n", __func__, EF1E_TP_VERSION);
+
 	i2c_bus_number = fpd_dp_ser_get_i2c_bus_number();
 	i2c_adap = i2c_get_adapter(i2c_bus_number);
 	if (!i2c_adap) {
@@ -616,7 +618,7 @@ error:
 	}
 
 	i2c_put_adapter(priv->i2c_adap);
-	pr_err("error occurred, initialization is aborted\n");
+	pr_err("%s: error occurred, initialization is aborted\n", __func__);
 	return ret;
 }
 
