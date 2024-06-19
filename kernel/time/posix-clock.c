@@ -110,6 +110,7 @@ static int posix_clock_open(struct inode *inode, struct file *fp)
 	int err;
 	struct posix_clock *clk =
 		container_of(inode->i_cdev, struct posix_clock, cdev);
+	struct posix_clock_context *pccontext;
 
 	down_read(&clk->rwsem);
 
@@ -117,7 +118,7 @@ static int posix_clock_open(struct inode *inode, struct file *fp)
 		err = -ENODEV;
 		goto out;
 	}
-	if (clk->ops.open)
+	if (clk->ops.open) {
 		err = clk->ops.open(clk, fp->f_mode);
 		if (err) {
 			kfree(pccontext);
