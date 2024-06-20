@@ -598,9 +598,7 @@ int fpd_dp_set_fpd_4_983_pll(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x42, 0x53);
 
 	/* Set HALFRATE_MODE */
-	fpd_dp_ser_write_reg(client, 0x11, 0x2);
 	fpd_dp_ser_write_reg(client, 0x2, 0x51);
-	fpd_dp_ser_write_reg(client, 0x11, 0x90);
 
 	/* Zero out fractional PLL for port 0 */
 	fpd_dp_ser_write_reg(client, 0x40, 0x08);
@@ -2294,6 +2292,29 @@ static int fpd_dp_ser_remove(struct platform_device *pdev) {
 	return 0;
 }
 
+static void fpd_dp_ser_shutdown(struct platform_device *pdev) {
+	unsigned char  __iomem *gpio_cfg;
+	unsigned char data;
+
+	fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
+
+	/* Map  GPIO IO address to virtual address */
+	gpio_cfg = (unsigned char *)ioremap(PAD_CFG_DW0_GPPC_A_16, 0x1);
+	if (!gpio_cfg) {
+		fpd_dp_ser_debug("Ioremap fail in fpd_dp_ser_shutdown\n");
+		return;
+	}
+
+	data = ioread8(gpio_cfg);
+
+	/* Set Serdes DP3 last bit of GPIO IO address to 1 for pulling up DP3 */
+	data = data & 0xFE;
+	iowrite8(data, gpio_cfg);
+	iounmap(gpio_cfg);
+
+	return;
+}
+
 #ifdef CONFIG_PM
 
 static int fpd_dp_ser_suspend(struct device *dev)
@@ -2420,6 +2441,7 @@ static const struct i2c_device_id fpd_dp_ser_i2c_id_table[] = {
 static struct platform_driver fpd_dp_ser_driver = {
 	.probe	= fpd_dp_ser_probe,
 	.remove	= fpd_dp_ser_remove,
+	.shutdown = fpd_dp_ser_shutdown,
 	.driver		= {
 		.name  = DEV_NAME,
 		.owner = THIS_MODULE,
