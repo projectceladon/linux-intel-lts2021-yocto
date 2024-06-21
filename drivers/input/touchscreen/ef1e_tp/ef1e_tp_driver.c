@@ -578,23 +578,15 @@ static int ef1e_tp_probe(struct platform_device *dev)
 	i2c_bus_number = fpd_dp_ser_get_i2c_bus_number();
 	i2c_adap = i2c_get_adapter(i2c_bus_number);
 	if (!i2c_adap) {
-		pr_err("cannot find a valid i2c bus for tp\n");
+		pr_err("%s: cannot find a valid i2c bus for tp\n", __func__);
 		ret = -ENODEV;
 		goto error;
 	}
 	priv->i2c_adap = i2c_adap;
 
-	priv->init_wq = create_workqueue("ef1e_tp-init-wq");
-	if (IS_ERR_OR_NULL(priv->init_wq)) {
-		dev_err(&dev->dev, "failed to create init wq\n");
-		ret = -ENOMEM;
-		goto error;
-	}
-	queue_work(priv->init_wq, &priv->init_work);
-
 	ret = tp_input_dev_init(priv);
 	if (ret < 0) {
-		pr_err("Failed to initialize input device\n");
+		pr_err("%s: failed to initialize input device\n", __func__);
 		goto error;
 	}
 
@@ -605,11 +597,23 @@ static int ef1e_tp_probe(struct platform_device *dev)
 	if (ret < 0)
 		goto error;
 
+	priv->init_wq = alloc_workqueue("ef1e_tp-init-wq", WQ_HIGHPRI, 0);
+	if (IS_ERR_OR_NULL(priv->init_wq)) {
+		dev_err(&dev->dev, "failed to create init wq\n");
+		ret = -ENOMEM;
+		goto error;
+	}
+	queue_work(priv->init_wq, &priv->init_work);
+
 	pr_info("%s(): done\n", __func__);
 	return 0;
 
 error:
+	if (!IS_ERR_OR_NULL(priv->init_wq))
+		destroy_workqueue(priv->init_wq);
+
 	tp_input_dev_destroy(priv);
+
 	if (priv->polling) {
 		if (priv->polling_kthread)
 			kthread_stop(priv->polling_kthread);
