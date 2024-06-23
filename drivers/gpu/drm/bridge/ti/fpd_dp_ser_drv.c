@@ -171,7 +171,8 @@ char fpd_dp_ser_read_reg(struct i2c_client *client, u8 reg_addr, u8 *val)
 
 int fpd_dp_ser_write_reg(struct i2c_client *client, unsigned int reg_addr, u8 val)
 {
-	int ret = 0;
+	int ret   = -1;
+	int count = 0;
 	struct i2c_msg msg;
 	u8 buf[2];
 
@@ -183,15 +184,23 @@ int fpd_dp_ser_write_reg(struct i2c_client *client, unsigned int reg_addr, u8 va
 	msg.buf = &buf[0];
 	msg.len = 2;
 
-	ret = i2c_transfer(client->adapter, &msg, 1);
-	if (ret < 0) {
-		fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-], fail client->addr=0x%02x, reg_addr=0x%02x, val=0x%02x\n",
-				__FILE__, __func__, __LINE__, client->addr, reg_addr, val);
+	while ((ret != 0) && (count < 10)) {
+		ret = i2c_transfer(client->adapter, &msg, 1);
+		if (ret < 0) {
+			count++;
+			fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-], fail client->addr=0x%02x, reg_addr=0x%02x, val=0x%02x\n",
+					__FILE__, __func__, __LINE__, client->addr, reg_addr, val);
+		} else
+			ret = 0;
+	}
+
+	if (ret == 0) {
+		fpd_dp_ser_debug("[FPD_DP] WIB 0x%02x: 0x%02x 0x%02x OK\n",
+				client->addr, reg_addr, val);
+		return 0;
+	} else {
 		return -ENXIO;
 	}
-	fpd_dp_ser_debug("[FPD_DP] WIB 0x%02x: 0x%02x 0x%02x OK\n",
-			client->addr, reg_addr, val);
-	return 0;
 }
 
 bool
@@ -237,7 +246,6 @@ fpd_dp_mcu_motor_mode(struct i2c_client *client, unsigned int reg_addr, u32 val)
 int fpd_dp_mcu_read_reg(struct i2c_client *client, unsigned int reg_addr, u8 len, u8 *data)
 {
 	struct i2c_msg msg[2];
-	int i = 0;
 	u8 buf[1];
 	int ret = 0;
 
@@ -284,11 +292,11 @@ bool fpd_dp_mcu_write_reg(struct i2c_client *client, unsigned int reg_addr, u32 
 
 	if (ret < 0) {
 		pr_info("[FPD_DP] [-%s-%s-%d-], fail client->addr=0x%02x, reg_addr=0x%02x, val=0x%03x\n",
-                              __FILE__, __func__, __LINE__, msg.addr, reg_addr, val);
+			__FILE__, __func__, __LINE__, msg.addr, reg_addr, val);
 		return false;
 	}
 
-	for (i=0; i < msg.len; i++) {
+	for (i = 0; i < msg.len; i++) {
 		pr_info("[FPD_DP] WIB 0x%02x: 0x%02x buf[%d] 0x%02x OK\n",
 			msg.addr, reg_addr, i, buf[i]);
 	}
@@ -324,7 +332,7 @@ void fpd_dp_ser_update(struct i2c_client *client,
 
 /**
  * @brief reset
- * @param client 
+ * @param client
  */
 void fpd_dp_ser_reset(struct i2c_client *client)
 {
@@ -347,6 +355,9 @@ void fpd_dp_ser_reset(struct i2c_client *client)
  */
 void fpd_dp_ser_set_up_variables(struct i2c_client *client)
 {
+	/* i2c 400k */
+	fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
+	fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
 	fpd_dp_ser_write_reg(client, 0x70, FPD_DP_SER_RX_ADD_A);
 	fpd_dp_ser_write_reg(client, 0x78, FPD_DP_SER_RX_ADD_A);
 	fpd_dp_ser_write_reg(client, 0x88, 0x0);
@@ -406,7 +417,7 @@ static void fpd_dp_ser_motor_close(struct i2c_client *client)
 
 /**
  * @brief Check MODE Strapping
- * @param client 
+ * @param client
  */
 void fpd_dp_ser_check_mode_strapping(struct i2c_client *client)
 {
@@ -465,6 +476,9 @@ int fpd_dp_ser_program_fpd_4_mode(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x5b, 0x23);
 	/* Force FPD4_TX single port 0 mode */
 	fpd_dp_ser_write_reg(client, 0x05, 0x2c);
+	/* Soft Reset SER */
+	fpd_dp_ser_write_reg(client, 0x01, 0x01);
+	usleep_range(20000, 22000);
 
 	return 0;
 }
@@ -519,7 +533,6 @@ int fpd_dp_set_fpd_4_pll(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x2, 0x51);
 	/* Unset HALFRATE_MODE Override */
 	fpd_dp_ser_write_reg(client, 0x2, 0x50);
-
 
 	/* Zero out fractional PLL for port 0 */
 	fpd_dp_ser_write_reg(client, 0x40, 0x08);
@@ -611,7 +624,7 @@ int fpd_dp_set_fpd_4_983_pll(struct i2c_client *client)
 
 /**
  * @brief fpd_dp_ser_enable_I2C_passthrough
- * @param client 
+ * @param client
  */
 void fpd_dp_ser_enable_I2C_passthrough(struct i2c_client *client)
 {
@@ -656,7 +669,6 @@ int fpd_dp_ser_configue_enable_plls(struct i2c_client *client)
 	/* Enable PLL0 */
 	fpd_dp_ser_write_reg(client, 0x42,0x00);
 
-
 	/* soft reset Ser */
 	fpd_dp_ser_write_reg(client, 0x01,0x01);
 	usleep_range(20000, 22000);
@@ -673,23 +685,23 @@ int fpd_dp_ser_configue_enable_983_plls(struct i2c_client *client)
 	fpd_dp_ser_debug("[FPD_DP] Set VCO\n");
 
 	/* Select VCO reg */
-	fpd_dp_ser_write_reg(client, 0x41,0x0e);
+	fpd_dp_ser_write_reg(client, 0x41, 0x0e);
 	/* Set VCO */
-	fpd_dp_ser_write_reg(client, 0x42,0xc7);
+	fpd_dp_ser_write_reg(client, 0x42, 0xc7);
 
 	fpd_dp_ser_debug("[FPD_DP] reset PLL\n");
 	/* soft reset PLL */
-	fpd_dp_ser_write_reg(client, 0x01,0x30);
+	fpd_dp_ser_write_reg(client, 0x01, 0x30);
 
 	fpd_dp_ser_debug("[FPD_DP] Enable PLL0\n");
 	/* Select PLL page */
-	fpd_dp_ser_write_reg(client, 0x41,0x1b);
+	fpd_dp_ser_write_reg(client, 0x41, 0x1b);
 	/* Enable PLL0 */
-	fpd_dp_ser_write_reg(client, 0x42,0x00);
+	fpd_dp_ser_write_reg(client, 0x42, 0x00);
 
 	/* soft reset Ser */
-	fpd_dp_ser_write_reg(client, 0x01,0x01);
-	usleep_range(20000, 22000);
+	fpd_dp_ser_write_reg(client, 0x01, 0x01);
+	msleep(30);
 
 	return 0;
 }
@@ -720,9 +732,10 @@ int fpd_dp_deser_soft_reset(struct i2c_client *client)
 
 int fpd_dp_deser_soft_983_reset(struct i2c_client *client)
 {
-	u8 des_read = 0;
+	/* i2c 400k */
+	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x2b, 0x0a);
+	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x2c, 0x0b);
 
-	msleep(30);
 	fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
 	msleep(30);
 
@@ -734,8 +747,8 @@ int fpd_dp_deser_soft_983_reset(struct i2c_client *client)
 
 /**
  * @brief Set DP Config
- * @param client 
- * @return int 
+ * @param client
+ * @return int
  */
 int fpd_dp_ser_set_dp_config(struct i2c_client *client)
 {
@@ -797,8 +810,8 @@ int fpd_dp_ser_set_dp_config(struct i2c_client *client)
 
 /**
  * @brief Program VP Configs
- * @param client 
- * @return int 
+ * @param client
+ * @return int
  */
 int fpd_dp_ser_program_vp_configs(struct i2c_client *client)
 {
@@ -856,8 +869,8 @@ int fpd_dp_ser_program_vp_configs(struct i2c_client *client)
 
 /**
  * @brief Enable VPs
- * @param client 
- * @return int 
+ * @param client
+ * @return int
  */
 int fpd_dp_ser_enable_vps(struct i2c_client *client)
 {
@@ -873,8 +886,8 @@ int fpd_dp_ser_enable_vps(struct i2c_client *client)
 
 /**
  * @brief Clear CRC errors from initial link process
- * @param client 
- * @return int 
+ * @param client
+ * @return int
  */
 int fpd_dp_ser_clear_crc_error(struct i2c_client *client)
 {
@@ -902,7 +915,7 @@ int fpd_dp_ser_configure_serializer_tx_link_layer(struct i2c_client *client);
 
 /**
  * @brief Check if VP is synchronized to DP input
- * @param work 
+ * @param work
  */
 static void fpd_poll_training_lock(struct work_struct *work)
 {
@@ -961,14 +974,12 @@ reschedule:
 		fpd_dp_ser_debug("[FPD_DP] ser training STS  %d\n", VP0sts);
 		return;
 	}
-
-	queue_delayed_work(fpd_dp_priv->wq, &fpd_dp_priv->delay_work, msecs_to_jiffies(100));
 }
 
 /**
- * @brief 
- * @param client 
- * @return int 
+ * @brief
+ * @param client
+ * @return int
  */
 int fpd_dp_ser_configure_serializer_tx_link_layer(struct i2c_client *client)
 {
@@ -996,7 +1007,7 @@ int fpd_dp_ser_configure_serializer_tx_link_layer(struct i2c_client *client)
 
 /**
  * @brief Override DES 0 eFuse
- * @param client 
+ * @param client
  */
 int fpd_dp_deser_override_efuse(struct i2c_client *client)
 {
@@ -1012,16 +1023,16 @@ int fpd_dp_deser_override_efuse(struct i2c_client *client)
 	fpd_dp_ser_write_reg(client, 0x4a, 0x0);
 	fpd_dp_ser_write_reg(client, 0x48, 0x1b);
 	fpd_dp_ser_read_reg(client, 0x4b, &DES_READBACK);
-	if (DES_READBACK != 0x19) {
+	if (DES_READBACK != 0x19)
 		fpd_dp_ser_debug("[FPD_DP] error\n");
-	}
+
 	usleep_range(20000, 22000);
 	return 0;
 }
 
 /**
  * @brief Read Deserializer 0 Temp
- * @param client 
+ * @param client
  */
 void fpd_dp_deser_set_up_des_temp(struct i2c_client *client)
 {
@@ -1059,7 +1070,7 @@ void fpd_dp_deser_set_up_des_temp(struct i2c_client *client)
 	if (Ramp_UP_CAP_DELTA > 0) {
 		fpd_dp_ser_debug("[FPD_DP] Adjusting ramp up and resetting DES\n");
 		TS_CODE_UP = Efuse_TS_CODE - Ramp_UP_CAP_DELTA;
-		if (TS_CODE_UP < 0) 
+		if (TS_CODE_UP < 0)
 			TS_CODE_UP = 0;
 
 		fpd_dp_ser_write_reg(client, 0x41, 0xf5);
@@ -1077,7 +1088,7 @@ void fpd_dp_deser_set_up_des_temp(struct i2c_client *client)
 	if (Ramp_DN_CAP_DELTA > 0) {
 		fpd_dp_ser_debug("[FPD_DP] Adjusting ramp up and resetting DES\n");
 		TS_CODE_DN = Efuse_TS_CODE + Ramp_DN_CAP_DELTA;
-		if(TS_CODE_DN >= 7) 
+		if (TS_CODE_DN >= 7)
 			TS_CODE_DN = 7;
 
 		fpd_dp_ser_write_reg(client, 0x41, 0xf5);
@@ -1096,7 +1107,7 @@ void fpd_dp_deser_set_up_des_temp(struct i2c_client *client)
 
 /**
  * @brief Hold Des DTG in reset
- * @param client 
+ * @param client
  */
 void fpd_dp_deser_hold_dtg_reset(struct i2c_client *client)
 {
@@ -1113,8 +1124,8 @@ void fpd_dp_deser_hold_dtg_reset(struct i2c_client *client)
 
 /**
  * @brief Disable Stream Mapping
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_disalbe_stream_mapping(struct i2c_client *client)
 {
@@ -1129,8 +1140,8 @@ void fpd_dp_deser_disalbe_stream_mapping(struct i2c_client *client)
 
 /**
  * @brief Setup DP ports
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_setup_ports(struct i2c_client *client)
 {
@@ -1147,8 +1158,8 @@ void fpd_dp_deser_setup_ports(struct i2c_client *client)
 
 /**
  * @brief Force DP Rate
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_force_dp_rate(struct i2c_client *client)
 {
@@ -1176,8 +1187,8 @@ void fpd_dp_deser_force_dp_rate(struct i2c_client *client)
 
 /**
  * @brief Map video to display output
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_map_output(struct i2c_client *client)
 {
@@ -1198,8 +1209,8 @@ void fpd_dp_deser_map_output(struct i2c_client *client)
 
 /**
  * @brief Program quad pixel clock for DP port 0
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_prog_pclk(struct i2c_client *client)
 {
@@ -1226,8 +1237,8 @@ void fpd_dp_deser_prog_pclk(struct i2c_client *client)
 
 /**
  * @brief Setup DTG for port 0
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_setup_dtg(struct i2c_client *client)
 {
@@ -1255,8 +1266,8 @@ void fpd_dp_deser_setup_dtg(struct i2c_client *client)
 
 /**
  * @brief Program DPTX for DP port 0
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_setup_dptx(struct i2c_client *client)
 {
@@ -1356,8 +1367,8 @@ void fpd_dp_deser_setup_dptx(struct i2c_client *client)
 
 /**
  * @brief Release Des DTG reset
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_release_dtg_reset(struct i2c_client *client)
 {
@@ -1383,8 +1394,8 @@ void fpd_dp_deser_release_dtg_reset(struct i2c_client *client)
 
 /**
  * @brief Enable DP 0 output
- * 
- * @param client 
+ *
+ * @param client
  */
 void fpd_dp_deser_enable_output(struct i2c_client *client)
 {
@@ -1698,7 +1709,6 @@ int fpd_dp_deser_984_override_efuse(struct i2c_client *client)
 		fpd_dp_ser_write_reg(client, 0x42, 0x26);
 		/* Soft Reset DES */
 		/* Override DES 0 eFuse */
-		msleep(30);
 		fpd_dp_ser_write_reg(client, 0x1, 0x1);
 		msleep(30);
 	}
@@ -1897,11 +1907,6 @@ static bool fpd_dp_deser_984_enable_output(struct i2c_client *client)
 	ret |= fpd_dp_ser_write_reg(client, 0x4e, 0x0);
 	/* Enable INTB_IN */
 	ret |= fpd_dp_ser_write_reg(client, 0x44, 0x81);
-	/* i2c speed 400k */
-	ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x2b, 0x0a);
-	ret |= fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[0], 0x2c, 0x0b);
-	ret |= fpd_dp_ser_write_reg(client, 0x2b, 0x0a);
-	ret |= fpd_dp_ser_write_reg(client, 0x2c, 0x0b);
 
 	if (ret) {
 		fpd_dp_ser_err("%s: failed to enable output\n", __func__);
@@ -2038,6 +2043,7 @@ static int intel_get_i2c_bus_id(int adapter_id, char *adapter_bdf, int bdf_len)
 int fpd_dp_ser_get_i2c_bus_number(void)
 {
 	char adapter_bdf[32] = ADAPTER_PP_DEV_NAME;
+
 	return intel_get_i2c_bus_id(0, adapter_bdf, 32);
 }
 EXPORT_SYMBOL_GPL(fpd_dp_ser_get_i2c_bus_number);
@@ -2047,7 +2053,7 @@ static bool fpd_dp_ser_respond_dhu_startup_status(struct i2c_client *client)
 	int ret;
 
 	ret = fpd_dp_mcu_write_reg(client,
-			           FPD_DP_SER_RESPOND_DHU_STARTUP_STATUS, 0x01);
+				FPD_DP_SER_RESPOND_DHU_STARTUP_STATUS, 0x01);
 	if (ret < 0) {
 		fpd_dp_ser_err("%s: failed to write DHU statup status\n", __func__);
 		return false;
@@ -2136,18 +2142,14 @@ out:
 
 static bool wait_display_startup_done(struct i2c_client *client)
 {
-	int ret;
 	int n = 0;
-	int i = 0;
-	bool status;
 
-	while (++n < 100)
-	{
-		if (fpd_dp_ser_read_display_startup_status(client)) {
+	while (++n < 3) {
+		if (fpd_dp_ser_read_display_startup_status(client))
 			return true;
-		} else {
+		else
 			fpd_dp_ser_info("[FPD_DP] RIB DP2 UB943 display startup reset\n");
-		}
+
 		usleep_range(5000, 5200);
 	}
 
@@ -2185,7 +2187,11 @@ bool fpd_dp_ser_init(void)
 
 	fpd_dp_ser_unlock_global();
 
-	queue_work(fpd_dp_priv->motor_setup_wq, &fpd_dp_priv->motor_setup_work);
+	if (wait_display_startup_done(fpd_dp_priv->priv_dp_client[2]))
+		fpd_dp_ser_motor_open(fpd_dp_priv->priv_dp_client[2]);
+	else
+		return false;
+
 
 	return true;
 }
@@ -2234,25 +2240,6 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 		i2c_set_clientdata(priv->priv_dp_client[i], priv);
 	}
 	fpd_dp_priv = priv;
-
-	INIT_DELAYED_WORK(&fpd_dp_priv->delay_work, fpd_poll_training_lock);
-	fpd_dp_priv->wq = alloc_workqueue("fpd_poll_training_lock",
-					  WQ_HIGHPRI, 0);
-	if (unlikely(!fpd_dp_priv->wq)) {
-		fpd_dp_ser_debug("[FPD_DP] Failed to allocate workqueue\n");
-		ret = -ENOMEM;
-		goto err_i2c;
-	}
-
-	INIT_WORK(&fpd_dp_priv->motor_setup_work, fpd_dp_motor_setup_work);
-	fpd_dp_priv->motor_setup_wq = alloc_workqueue("fpd_dp_motor_setup",
-						      WQ_HIGHPRI, 0);
-	if (IS_ERR_OR_NULL(fpd_dp_priv->motor_setup_wq)) {
-		dev_err(&pdev->dev, "failed to create motor setup wq\n");
-		ret = -ENOMEM;
-		goto err_motor_setup_wq;
-	}
-
 	fpd_dp_priv->count = 0;
 
 	gpio_cfg = (unsigned char *)ioremap(PAD_CFG_DW0_GPPC_A_16, 0x1);
@@ -2267,13 +2254,11 @@ static int fpd_dp_ser_probe(struct platform_device *pdev)
 
 	if (!fpd_dp_ser_init()) {
 		ret = -ENXIO;
-		goto err_motor_setup_wq;
+		goto err_i2c;
 	}
 
 	return 0;
 
-err_motor_setup_wq:
-	destroy_workqueue(fpd_dp_priv->wq);
 err_i2c:
 	for (i = 0; i < ARRAY_SIZE(fpd_dp_i2c_board_info); ++i)
 		i2c_unregister_device(priv->priv_dp_client[i]);
@@ -2283,17 +2268,17 @@ err_adapter:
 	return ret;
 }
 
-static int fpd_dp_ser_remove(struct platform_device *pdev) {
+static int fpd_dp_ser_remove(struct platform_device *pdev)
+{
 	int i = 0;
 	struct fpd_dp_ser_priv *priv =
-		(struct fpd_dp_ser_priv*)platform_get_drvdata(pdev);
+		(struct fpd_dp_ser_priv *)platform_get_drvdata(pdev);
 	fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
 	if (priv != NULL) {
-		cancel_delayed_work_sync(&priv->delay_work);
 		fpd_dp_ser_lock_global();
 		fpd_dp_ser_set_ready(false);
 		for (i = 0; i < ARRAY_SIZE(fpd_dp_i2c_board_info); i++) {
-			struct i2c_client *client= priv->priv_dp_client[i];
+			struct i2c_client *client = priv->priv_dp_client[i];
 			if (i == 0)
 				fpd_dp_ser_reset(client);
 			else
@@ -2313,6 +2298,47 @@ static int fpd_dp_ser_remove(struct platform_device *pdev) {
 	return 0;
 }
 
+static void fpd_dp_ser_shutdown(struct platform_device *pdev)
+{
+	unsigned char  __iomem *gpio_cfg;
+	unsigned char data;
+
+	fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
+
+	struct fpd_dp_ser_priv *priv =
+		(struct fpd_dp_ser_priv *)platform_get_drvdata(pdev);
+
+	if (priv != NULL) {
+		fpd_dp_ser_lock_global();
+		fpd_dp_ser_set_ready(false);
+		/* first des reset, and then ser reset */
+		fpd_dp_ser_write_reg(fpd_dp_priv->priv_dp_client[1], 0x01, 0x01);
+		/* after reset, wait 20ms to avoid ser/des read/write fail */
+		usleep_range(20000, 22000);
+
+		fpd_dp_ser_reset(fpd_dp_priv->priv_dp_client[0]);
+		fpd_dp_ser_unlock_global();
+
+		fpd_dp_ser_debug("[-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
+	}
+
+	/* Map  GPIO IO address to virtual address */
+	gpio_cfg = (unsigned char *)ioremap(PAD_CFG_DW0_GPPC_A_16, 0x1);
+	if (!gpio_cfg) {
+		fpd_dp_ser_debug("Ioremap fail in fpd_dp_ser_shutdown\n");
+		return;
+	}
+
+	data = ioread8(gpio_cfg);
+
+	/* Set Serdes DP3 last bit of GPIO IO address to 1 for pulling up DP3 */
+	data = data & 0xFE;
+	iowrite8(data, gpio_cfg);
+	iounmap(gpio_cfg);
+
+	return;
+}
+
 #ifdef CONFIG_PM
 
 static int fpd_dp_ser_suspend(struct device *dev)
@@ -2325,7 +2351,7 @@ static int fpd_dp_ser_suspend(struct device *dev)
 	fpd_dp_ser_unlock_global();
 
 	fpd_dp_ser_debug("[FPD_DP] [-%s-%s-%d-]\n", __FILE__, __func__, __LINE__);
-	return 0;	
+	return 0;
 }
 
 static int fpd_dp_ser_resume(struct device *dev)
@@ -2374,7 +2400,6 @@ static int fpd_dp_ser_suspend_late(struct device *dev)
 
 	return 0;
 }
-
 
 static int fpd_dp_ser_resume_early(struct device *dev)
 {
@@ -2439,6 +2464,7 @@ static const struct i2c_device_id fpd_dp_ser_i2c_id_table[] = {
 static struct platform_driver fpd_dp_ser_driver = {
 	.probe	= fpd_dp_ser_probe,
 	.remove	= fpd_dp_ser_remove,
+	.shutdown = fpd_dp_ser_shutdown,
 	.driver		= {
 		.name  = DEV_NAME,
 		.owner = THIS_MODULE,
