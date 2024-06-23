@@ -632,7 +632,8 @@ static int ef1e_tp_remove(struct platform_device *dev)
 	} else {
 		tp_gpio_irq_destroy(priv);
 	}
-	destroy_workqueue(priv->init_wq);
+	if (priv->init_wq)
+		destroy_workqueue(priv->init_wq);
 
 	tp_input_dev_destroy(priv);
 	i2c_put_adapter(priv->i2c_adap);
@@ -641,6 +642,25 @@ static int ef1e_tp_remove(struct platform_device *dev)
 	return 0;
 }
 
+static void ef1e_dp_shutdown(struct platform_device *pdev)
+{
+	struct tp_priv *priv = &global_tp;
+	int ret;
+
+	WRITE_ONCE(priv->initialized, 0);
+	pr_debug("%s: set initialized to false\n", __func__);
+
+	if (priv->polling) {
+		if (priv->polling_kthread)
+			kthread_stop(priv->polling_kthread);
+	}
+	if (priv->init_wq)
+		destroy_workqueue(priv->init_wq);
+
+	pr_debug("ef1e_tp driver shutdown\n");
+
+	return;
+}
 
 static int ef1e_tp_resume(struct device *dev)
 {
@@ -672,6 +692,7 @@ static const struct dev_pm_ops ef1e_tp_pm_ops = {
 static struct platform_driver ef1e_tp_driver = {
 	.probe = ef1e_tp_probe,
 	.remove = ef1e_tp_remove,
+	.shutdown = ef1e_dp_shutdown,
 	.driver = {
 		.name = EF1E_TP_PLATFORM_DEV_NAME,
 		.owner = THIS_MODULE,
