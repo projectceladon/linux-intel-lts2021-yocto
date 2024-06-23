@@ -5619,7 +5619,7 @@ static void mcu_set_backlight(const struct drm_connector_state *conn_state, u32 
 			 * status
 			 */
 			intel_dp_ser_write_reg(dev, i2c_adap_mcu,  0x01, 0x01);
-			msleep(50);
+			msleep(30);
 			WRITE_ONCE(deser_reset, 1);
 			drm_dbg_kms(dev, "[FPD_DP] 984 reset");
 		}
