@@ -125,6 +125,8 @@ static const struct property_entry dwc3_pci_intel_properties[] = {
 	PROPERTY_ENTRY_STRING("dr_mode", "peripheral"),
 	PROPERTY_ENTRY_BOOL("linux,sysdev_is_parent"),
 	PROPERTY_ENTRY_BOOL("snps,usb2-gadget-lpm-disable"),
+	PROPERTY_ENTRY_BOOL("snps,dis_u3_susphy_quirk"),
+	PROPERTY_ENTRY_BOOL("snps,dis_u2_susphy_quirk"),
 	{}
 };
 
@@ -328,7 +330,7 @@ static int dwc3_pci_probe(struct pci_dev *pci, const struct pci_device_id *id)
 		goto err;
 	}
 
-	device_init_wakeup(dev, true);
+	device_init_wakeup(dev, false);
 	pci_set_drvdata(pci, dwc);
 	pm_runtime_put(dev);
 #ifdef CONFIG_PM
