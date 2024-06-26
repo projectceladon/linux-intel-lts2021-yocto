@@ -30,8 +30,6 @@
 #define DWC3_ALIGN_FRAME(d, n)	(((d)->frame_number + ((d)->interval * (n))) \
 					& ~((d)->interval - 1))
 
-#define FORCE_HIGH_SPEED
-
 /**
  * dwc3_gadget_set_test_mode - enables usb2 test modes
  * @dwc: pointer to our context structure
@@ -2413,14 +2411,6 @@ static void __dwc3_gadget_set_speed(struct dwc3 *dwc)
 	enum usb_device_speed	speed;
 	u32			reg;
 
-#ifdef FORCE_HIGH_SPEED
-	/*
-	 * Forcing to High speed as platform dont have mechanism
-	 * to detect disconnect and this will put device LPM mode
-	 * which result in slow detection on connect.
-	 */
-	speed = USB_SPEED_HIGH;
-#else
 	speed = dwc->gadget_max_speed;
 	if (speed == USB_SPEED_UNKNOWN || speed > dwc->maximum_speed)
 		speed = dwc->maximum_speed;
@@ -2430,10 +2420,15 @@ static void __dwc3_gadget_set_speed(struct dwc3 *dwc)
 		__dwc3_gadget_set_ssp_rate(dwc);
 		return;
 	}
-#endif
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
 	reg &= ~(DWC3_DCFG_SPEED_MASK);
+	/*
+	 * Forcing to High speed as platform dont have mechanism
+	 * to detect disconnect and this will put device LPM mode
+	 * which result in slow detection on connect.
+	 */
+	speed = DWC3_DCFG_HIGHSPEED;
 	/*
 	 * WORKAROUND: DWC3 revision < 2.20a have an issue
 	 * which would cause metastability state on Run/Stop
@@ -2451,9 +2446,6 @@ static void __dwc3_gadget_set_speed(struct dwc3 *dwc)
 	    !dwc->dis_metastability_quirk) {
 		reg |= DWC3_DCFG_SUPERSPEED;
 	} else {
-#ifdef FORCE_HIGH_SPEED
-		reg |= DWC3_DCFG_HIGHSPEED;
-#else
 		switch (speed) {
 		case USB_SPEED_FULL:
 			reg |= DWC3_DCFG_FULLSPEED;
@@ -2478,7 +2470,6 @@ static void __dwc3_gadget_set_speed(struct dwc3 *dwc)
 			else
 				reg |= DWC3_DCFG_SUPERSPEED_PLUS;
 		}
-#endif
 	}
 	if (DWC3_IP_IS(DWC32) &&
 	    speed > USB_SPEED_UNKNOWN &&
