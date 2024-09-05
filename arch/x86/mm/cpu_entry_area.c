@@ -10,6 +10,7 @@
 #include <asm/fixmap.h>
 #include <asm/desc.h>
 #include <asm/setup.h>
+#include <asm/kasan.h>
 
 static DEFINE_PER_CPU_PAGE_ALIGNED(struct entry_stack_page, entry_stack_storage);
 
@@ -39,10 +40,11 @@ static __init void init_cea_offsets(void)
 
 	/* O(sodding terrible) */
 	for_each_possible_cpu(i) {
-		unsigned int cea;
+		static unsigned int cea = 1;
 
 again:
-		cea = prandom_u32_max(max_cea);
+		//cea = prandom_u32_max(max_cea);
+		cea++;
 
 		for_each_possible_cpu(j) {
 			if (cea_offset(j) == cea)
@@ -195,6 +197,9 @@ static void __init setup_cpu_entry_area(unsigned int cpu)
 		PAGE_KERNEL_RO : PAGE_KERNEL;
 	pgprot_t tss_prot = PAGE_KERNEL;
 #endif
+
+	kasan_populate_shadow_for_vaddr(cea, CPU_ENTRY_AREA_SIZE,
+					early_cpu_to_node(cpu));
 
 	cea_set_pte(&cea->gdt, get_cpu_gdt_paddr(cpu), gdt_prot);
 
