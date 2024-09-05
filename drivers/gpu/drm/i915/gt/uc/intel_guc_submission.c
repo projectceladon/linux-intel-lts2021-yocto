@@ -592,6 +592,7 @@ static inline void clr_ctx_id_mapping(struct intel_guc *guc, u32 id)
 
 static void decr_outstanding_submission_g2h(struct intel_guc *guc)
 {
+	DRM_INFO("decr_outstanding_submission_g2h outstanding_submission_g2h is %d\n", atomic_read(&guc->outstanding_submission_g2h));
 	if (atomic_dec_and_test(&guc->outstanding_submission_g2h))
 		wake_up_all(&guc->ct.wq);
 }
@@ -653,6 +654,8 @@ int intel_guc_wait_for_pending_msg(struct intel_guc *guc,
 	}
 	finish_wait(&guc->ct.wq, &wait);
 
+	if (timeout < 0)
+		DRM_INFO("intel_guc_wait_for_pending_msg timeout %d \n", timeout);
 	return (timeout < 0) ? timeout : 0;
 }
 
@@ -4365,8 +4368,11 @@ static void wait_wake_outstanding_tlb_g2h(struct intel_guc *guc, u32 seqno)
 
 	/* We received a response after the waiting task did exit with a timeout */
 	if (unlikely(!wait))
-		drm_dbg(&guc_to_gt(guc)->i915->drm,
+		drm_info(&guc_to_gt(guc)->i915->drm,
 			"Stale tlb invalidation response with seqno %d\n", seqno);
+	else
+		drm_info(&guc_to_gt(guc)->i915->drm,
+                        "wait_wake_outstanding_tlb_g2h %d\n", seqno);
 
 	if (wait)
 		wake_up_tlb_invalidate(wait);

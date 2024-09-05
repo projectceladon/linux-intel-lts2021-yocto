@@ -40,11 +40,16 @@ static inline struct drm_device *ct_to_drm(struct intel_guc_ct *ct)
 
 #define CT_ERROR(_ct, _fmt, ...) \
 	drm_err(ct_to_drm(_ct), "CT: " _fmt, ##__VA_ARGS__)
+
+#define CT_DEBUG(_ct, _fmt, ...) \
+        drm_info(ct_to_drm(_ct), "CT: " _fmt, ##__VA_ARGS__)
+#if 0
 #ifdef CONFIG_DRM_I915_DEBUG_GUC
 #define CT_DEBUG(_ct, _fmt, ...) \
 	drm_dbg(ct_to_drm(_ct), "CT: " _fmt, ##__VA_ARGS__)
 #else
 #define CT_DEBUG(...)	do { } while (0)
+#endif
 #endif
 #define CT_PROBE_ERROR(_ct, _fmt, ...) \
 	i915_probe_error(ct_to_i915(ct), "CT: " _fmt, ##__VA_ARGS__)
@@ -894,6 +899,7 @@ static int ct_read(struct intel_guc_ct *ct, struct ct_incoming_msg **msg)
 	}
 
 	/* tail == head condition indicates empty */
+	DRM_INFO("CT G2H h=0x%x, t=0x%x\n", head, tail);
 	available = tail - head;
 	if (unlikely(available == 0)) {
 		*msg = NULL;
@@ -1161,6 +1167,7 @@ static int ct_handle_event(struct intel_guc_ct *ct, struct ct_incoming_msg *requ
 	case INTEL_GUC_ACTION_TLB_INVALIDATION_DONE:
 		g2h_release_space(ct, request->size);
 	}
+	DRM_INFO("ct_handle_event action 0x%x\n", action);
 	/* Handle tlb invalidation response in interrupt context */
 	if (action == INTEL_GUC_ACTION_TLB_INVALIDATION_DONE) {
 		const u32 *payload;
@@ -1245,7 +1252,7 @@ static void ct_handle_msg(struct intel_guc_ct *ct, struct ct_incoming_msg *msg)
  * Return: number available remaining dwords to read (0 if empty)
  *         or a negative error code on failure
  */
-static int ct_receive(struct intel_guc_ct *ct)
+static int ct_receive(struct intel_guc_ct *ct, const char *where, void ** got_msg)
 {
 	struct ct_incoming_msg *msg = NULL;
 	unsigned long flags;
@@ -1256,6 +1263,7 @@ static int ct_receive(struct intel_guc_ct *ct)
 	spin_unlock_irqrestore(&ct->ctbs.recv.lock, flags);
 	if (ret < 0)
 		return ret;
+	*got_msg = msg;
 
 	if (msg)
 		ct_handle_msg(ct, msg);
@@ -1263,23 +1271,29 @@ static int ct_receive(struct intel_guc_ct *ct)
 	return ret;
 }
 
-static void ct_try_receive_message(struct intel_guc_ct *ct)
+static int ct_try_receive_message(struct intel_guc_ct *ct, const char *where, void **got_msg)
 {
 	int ret;
 
 	if (GEM_WARN_ON(!ct->enabled))
-		return;
+		return -EIO;
 
-	ret = ct_receive(ct);
+	ret = ct_receive(ct, where, got_msg);
 	if (ret > 0)
 		tasklet_hi_schedule(&ct->receive_tasklet);
+
+	return ret;
 }
 
 static void ct_receive_tasklet_func(struct tasklet_struct *t)
 {
 	struct intel_guc_ct *ct = from_tasklet(ct, t, receive_tasklet);
+	void * got_msg;
+	int ret;
 
-	ct_try_receive_message(ct);
+	ret = ct_try_receive_message(ct, "Tasklet", &got_msg);
+	DRM_INFO("Tasklet G2H handler: got_msg = %d, ret = %d\n",
+		 got_msg ? 1 : 0, ret);
 }
 
 /*
@@ -1288,12 +1302,17 @@ static void ct_receive_tasklet_func(struct tasklet_struct *t)
  */
 void intel_guc_ct_event_handler(struct intel_guc_ct *ct)
 {
+	void *got_msg;
+	int ret;
+
 	if (unlikely(!ct->enabled)) {
 		WARN(1, "Unexpected GuC event received while CT disabled!\n");
 		return;
 	}
 
-	ct_try_receive_message(ct);
+	ret = ct_try_receive_message(ct, "Interrupt", &got_msg);
+	DRM_INFO("Interrupt G2H handler: got_msg = %d, ret = %d\n",
+		 got_msg ? 1 : 0, ret);
 }
 
 void intel_guc_ct_print_info(struct intel_guc_ct *ct,

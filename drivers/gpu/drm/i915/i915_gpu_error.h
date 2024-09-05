@@ -25,6 +25,9 @@
 #include "i915_params.h"
 #include "i915_scheduler.h"
 
+void intel_klog_error_capture(struct intel_gt *gt,
+                             intel_engine_mask_t engine_mask);
+
 struct drm_i915_private;
 struct i915_vma_compress;
 struct intel_engine_capture_vma;

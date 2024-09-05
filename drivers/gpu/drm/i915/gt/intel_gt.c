@@ -655,8 +655,10 @@ int intel_gt_wait_for_idle(struct intel_gt *gt, long timeout)
 			return -EINTR;
 	}
 
-	if (timeout)
+	if (timeout) {
+		DRM_INFO("intel_gt_retire_requests_timeout timeout is %d\n", timeout);
 		return timeout;
+	}
 
 	if (remaining_timeout < 0)
 		remaining_timeout = 0;
@@ -737,6 +739,7 @@ int intel_gt_init(struct intel_gt *gt)
 		drm_err(&gt->i915->drm, "intel_iov_init_late failed: %d\n", err);
 		goto err_gt;
 	}
+
 
 	for (retry = 0; retry < 3; retry++) {
 		if (retry)
