@@ -1160,7 +1160,7 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	intel_init_clock_gating(dev_priv);
 
 	udelay(10);
-	for (retry = 0; retry < 3; retry++) {
+	for (retry = 0; retry < 1; retry++) {
 		if (retry)
 			usleep_range(500, 1000);
 
