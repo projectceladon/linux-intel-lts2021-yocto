@@ -3032,6 +3032,8 @@ static int snd_pcm_sync_ptr(struct snd_pcm_substream *substream,
 	volatile struct snd_pcm_mmap_control *control;
 	int err;
 
+	pcm_err(substream->pcm, "%s\n", __func__);
+
 	memset(&sync_ptr, 0, sizeof(sync_ptr));
 	if (get_user(sync_ptr.flags, (unsigned __user *)&(_sync_ptr->flags)))
 		return -EFAULT;
@@ -3279,6 +3281,10 @@ static int snd_pcm_common_ioctl(struct file *file,
 {
 	struct snd_pcm_file *pcm_file = file->private_data;
 	int res;
+
+	if (cmd != __SNDRV_PCM_IOCTL_SYNC_PTR32 && cmd != __SNDRV_PCM_IOCTL_SYNC_PTR64) {
+		pcm_err(substream->pcm, "%s ioctl = 0x%x\n", __func__, cmd);
+	}
 
 	if (PCM_RUNTIME_CHECK(substream))
 		return -ENXIO;
