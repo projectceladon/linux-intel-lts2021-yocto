@@ -674,18 +674,23 @@ int intel_gt_init(struct intel_gt *gt)
 	intel_uncore_forcewake_get(gt->uncore, FORCEWAKE_ALL);
 
 	err = intel_iov_init(&gt->iov);
-	if (unlikely(err))
+	if (unlikely(err)) {
+		drm_err(&gt->i915->drm, "intel_iov_init failed: %d\n", err);
 		goto out_fw;
+	}
 
 	err = intel_gt_init_scratch(gt,
 				    GRAPHICS_VER(gt->i915) == 2 ? SZ_256K : SZ_4K);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "intel_gt_init_scratch failed: %d\n", err);
 		goto err_iov;
+	}
 
 	intel_gt_pm_init(gt);
 
 	gt->vm = kernel_vm(gt);
 	if (!gt->vm) {
+		drm_err(&gt->i915->drm, "kernel_vm failed: %d\n", err);
 		err = -ENOMEM;
 		goto err_pm;
 	}
@@ -693,37 +698,52 @@ int intel_gt_init(struct intel_gt *gt)
 	intel_set_mocs_index(gt);
 
 	err = intel_engines_init(gt);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "intel_engines_init failed: %d\n", err);
 		goto err_engines;
+	}
 
 	err = intel_uc_init(&gt->uc);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "intel_uc_init failed: %d\n", err);
 		goto err_engines;
+	}
 
 	err = intel_gt_resume(gt);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "intel_gt_resume failed: %d\n", err);
 		goto err_uc_init;
+	}
 
 	err = intel_gt_init_hwconfig(gt);
-	if (err)
+	if (err) {
 		drm_err(&gt->i915->drm, "Failed to retrieve hwconfig table: %pe\n",
 			ERR_PTR(err));
+	}
 
 	err = intel_iov_init_late(&gt->iov);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "intel_iov_init_late failed: %d\n", err);
 		goto err_gt;
+	}
 
 	err = __engines_record_defaults(gt);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "__engines_record_defaults failed: %d\n", err);
 		goto err_gt;
+	}
 
 	err = __engines_verify_workarounds(gt);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "__engines_verify_workarounds failed: %d\n", err);
 		goto err_gt;
+	}
 
 	err = i915_inject_probe_error(gt->i915, -EIO);
-	if (err)
+	if (err) {
+		drm_err(&gt->i915->drm, "i915_inject_probe_error failed: %d\n", err);
 		goto err_gt;
+	}
 
 	intel_uc_init_late(&gt->uc);
 
