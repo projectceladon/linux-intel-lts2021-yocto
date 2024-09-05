@@ -151,6 +151,7 @@ static bool crtc_state_is_legacy_gamma(const struct intel_crtc_state *crtc_state
 {
 	return !crtc_state->hw.degamma_lut &&
 		!crtc_state->hw.ctm &&
+		!crtc_state->hw.ctm_post_offset &&
 		crtc_state->hw.gamma_lut &&
 		lut_is_legacy(crtc_state->hw.gamma_lut);
 }
@@ -352,13 +353,37 @@ static void ilk_load_csc_matrix(const struct intel_crtc_state *crtc_state)
 static void icl_load_csc_matrix(const struct intel_crtc_state *crtc_state)
 {
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
+	struct drm_i915_private *dev_priv = to_i915(crtc_state->uapi.crtc->dev);
 
 	if (crtc_state->hw.ctm) {
 		u16 coeff[9];
 
 		ilk_csc_convert_ctm(crtc_state, coeff);
-		ilk_update_pipe_csc(crtc, ilk_csc_off_zero,
+		if (crtc_state->hw.ctm_post_offset) {
+			const struct drm_color_ctm_post_offset *ctm_post_offset = crtc_state->hw.ctm_post_offset->data;	
+			/* Nop pre/post offsets */
+			u16 csc_off[3] = {};
+			u16 postoff = 0;
+			csc_off[0] = ctm_post_offset->red >> 4;
+			csc_off[1] = ctm_post_offset->green >> 4;
+			csc_off[2] = ctm_post_offset->blue >> 4;
+			csc_off[0] = clamp_val(csc_off[0], postoff, 0xfff);
+			csc_off[1] = clamp_val(csc_off[1], postoff, 0xfff);
+			csc_off[2] = clamp_val(csc_off[2], postoff, 0xfff);
+			drm_dbg_kms(&dev_priv->drm,
+			    "csc_off[0] = %d\n", csc_off[0]);
+			drm_dbg_kms(&dev_priv->drm,
+			    "csc_off[1] = %d\n", csc_off[1]);
+			drm_dbg_kms(&dev_priv->drm,
+			    "csc_off[2] = %d\n", csc_off[2]);
+			ilk_update_pipe_csc(crtc, ilk_csc_off_zero,
+					    coeff, csc_off);
+		} else {
+			drm_dbg_kms(&dev_priv->drm,
+			    "csc_off_zero\n");
+			ilk_update_pipe_csc(crtc, ilk_csc_off_zero,
 				    coeff, ilk_csc_off_zero);
+		}
 	}
 
 	if (crtc_state->output_format != INTEL_OUTPUT_FORMAT_RGB) {

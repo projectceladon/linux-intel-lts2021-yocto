@@ -250,6 +250,8 @@ intel_crtc_duplicate_state(struct drm_crtc *crtc)
 		drm_property_blob_get(crtc_state->hw.degamma_lut);
 	if (crtc_state->hw.ctm)
 		drm_property_blob_get(crtc_state->hw.ctm);
+	if (crtc_state->hw.ctm_post_offset)
+		drm_property_blob_get(crtc_state->hw.ctm_post_offset);
 	if (crtc_state->hw.gamma_lut)
 		drm_property_blob_get(crtc_state->hw.gamma_lut);
 
@@ -275,6 +277,7 @@ static void intel_crtc_put_color_blobs(struct intel_crtc_state *crtc_state)
 	drm_property_blob_put(crtc_state->hw.degamma_lut);
 	drm_property_blob_put(crtc_state->hw.gamma_lut);
 	drm_property_blob_put(crtc_state->hw.ctm);
+	drm_property_blob_put(crtc_state->hw.ctm_post_offset);
 }
 
 void intel_crtc_free_hw_state(struct intel_crtc_state *crtc_state)
