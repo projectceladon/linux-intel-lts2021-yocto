@@ -38,4 +38,4 @@ obj-y += analogix/
 obj-y += cadence/
 obj-y += imx/
 obj-y += synopsys/
-obj-y += ti/
+obj-$(CONFIG_DRM_I2C_TI_983) += ti/
