@@ -237,12 +237,18 @@ int intel_guc_ct_init(struct intel_guc_ct *ct)
 
 	GEM_BUG_ON(ct->vma);
 
+	ct->requests.wq = alloc_ordered_workqueue("i915_guc_ct", 0);
+	if (unlikely(!ct->requests.wq)) {
+		CT_PROBE_ERROR(ct, "Failed to allocate workqueue for G2H processing\n");
+		return -ENOMEM;
+	}
+
 	blob_size = 2 * CTB_DESC_SIZE + CTB_H2G_BUFFER_SIZE + CTB_G2H_BUFFER_SIZE;
 	err = intel_guc_allocate_and_map_vma(guc, blob_size, &ct->vma, &blob);
 	if (unlikely(err)) {
 		CT_PROBE_ERROR(ct, "Failed to allocate %u for CTB data (%pe)\n",
 			       blob_size, ERR_PTR(err));
-		return err;
+		goto wq_out;
 	}
 
 	CT_DEBUG(ct, "base=%#x size=%u\n", intel_guc_ggtt_offset(guc, ct->vma), blob_size);
@@ -270,6 +276,12 @@ int intel_guc_ct_init(struct intel_guc_ct *ct)
 	guc_ct_buffer_init(&ct->ctbs.recv, desc, cmds, cmds_size, resv_space);
 
 	return 0;
+
+wq_out:
+	destroy_workqueue(ct->requests.wq);
+	ct->requests.wq = NULL;
+	return err;
+
 }
 
 /**
@@ -284,6 +296,7 @@ void intel_guc_ct_fini(struct intel_guc_ct *ct)
 
 	tasklet_kill(&ct->receive_tasklet);
 	i915_vma_unpin_and_release(&ct->vma, I915_VMA_RELEASE_MAP);
+	destroy_workqueue(ct->requests.wq);
 	memset(ct, 0, sizeof(*ct));
 }
 
@@ -1180,7 +1193,7 @@ static int ct_handle_event(struct intel_guc_ct *ct, struct ct_incoming_msg *requ
 	list_add_tail(&request->link, &ct->requests.incoming);
 	spin_unlock_irqrestore(&ct->requests.lock, flags);
 
-	queue_work(system_unbound_wq, &ct->requests.worker);
+	queue_work(ct->requests.wq, &ct->requests.worker);
 
 	return 0;
 }
