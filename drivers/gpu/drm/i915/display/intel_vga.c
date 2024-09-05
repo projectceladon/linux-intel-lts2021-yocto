@@ -153,6 +153,7 @@ int intel_vga_register(struct drm_i915_private *i915)
 	 * vga_client_register() fails with -ENODEV.
 	 */
 	ret = vga_client_register(pdev, intel_vga_set_decode);
+
 	if (ret && ret != -ENODEV)
 		return ret;
 
@@ -162,6 +163,5 @@ int intel_vga_register(struct drm_i915_private *i915)
 void intel_vga_unregister(struct drm_i915_private *i915)
 {
 	struct pci_dev *pdev = to_pci_dev(i915->drm.dev);
-
 	vga_client_unregister(pdev);
 }
