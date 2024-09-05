@@ -58,6 +58,7 @@ static int intel_dp_mst_compute_link_config(struct intel_encoder *encoder,
 	struct drm_i915_private *i915 = to_i915(connector->base.dev);
 	const struct drm_display_mode *adjusted_mode =
 		&crtc_state->hw.adjusted_mode;
+	bool constant_n = drm_dp_has_quirk(&intel_dp->desc, DP_DPCD_QUIRK_CONSTANT_N);
 	int bpp, slots = -EINVAL;
 
 	mst_state = drm_atomic_get_mst_topology_state(state, &intel_dp->mst_mgr);
@@ -78,8 +79,9 @@ static int intel_dp_mst_compute_link_config(struct intel_encoder *encoder,
 		crtc_state->pipe_bpp = bpp;
 
 		crtc_state->pbn = drm_dp_calc_pbn_mode(adjusted_mode->crtc_clock,
-						       crtc_state->pipe_bpp,
+						       bpp,
 						       false);
+
 		slots = drm_dp_atomic_find_time_slots(state, &intel_dp->mst_mgr,
 						      connector->port, crtc_state->pbn);
 		if (slots == -EDEADLK)
@@ -99,31 +101,85 @@ static int intel_dp_mst_compute_link_config(struct intel_encoder *encoder,
 			       adjusted_mode->crtc_clock,
 			       crtc_state->port_clock,
 			       &crtc_state->dp_m_n,
-			       crtc_state->fec_enable);
+			       constant_n, crtc_state->fec_enable);
 	crtc_state->dp_m_n.tu = slots;
 
 	return 0;
 }
 
-static int intel_dp_mst_update_slots(struct intel_encoder *encoder,
-				     struct intel_crtc_state *crtc_state,
-				     struct drm_connector_state *conn_state)
+static int intel_dp_dsc_mst_compute_link_config(struct intel_encoder *encoder,
+					        struct intel_crtc_state *crtc_state,
+					        struct drm_connector_state *conn_state,
+					        struct link_config_limits *limits)
 {
-	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
+	struct drm_atomic_state *state = crtc_state->uapi.state;
 	struct intel_dp_mst_encoder *intel_mst = enc_to_mst(encoder);
 	struct intel_dp *intel_dp = &intel_mst->primary->dp;
-	struct drm_dp_mst_topology_mgr *mgr = &intel_dp->mst_mgr;
-	struct drm_dp_mst_topology_state *topology_state;
-	u8 link_coding_cap = intel_dp_is_uhbr(crtc_state) ?
-		DP_CAP_ANSI_128B132B : DP_CAP_ANSI_8B10B;
+	struct intel_connector *connector =
+		to_intel_connector(conn_state->connector);
+	struct drm_i915_private *i915 = to_i915(connector->base.dev);
+	const struct drm_display_mode *adjusted_mode =
+		&crtc_state->hw.adjusted_mode;
+	bool constant_n = drm_dp_has_quirk(&intel_dp->desc,
+					   DP_DPCD_QUIRK_CONSTANT_N);
+	int bpp, slots = -EINVAL;
+	int i, num_bpc;
+	u8 dsc_bpc[3] = {0};
+	int min_bpp, max_bpp;
+	u8 dsc_max_bpc;
 
-	topology_state = drm_atomic_get_mst_topology_state(conn_state->state, mgr);
-	if (IS_ERR(topology_state)) {
-		drm_dbg_kms(&i915->drm, "slot update failed\n");
-		return PTR_ERR(topology_state);
+	crtc_state->lane_count = limits->max_lane_count;
+	crtc_state->port_clock = limits->max_rate;
+
+	/* Max DSC Input BPC for ICL is 10 and for TGL+ is 12 */
+	if (DISPLAY_VER(i915) >= 12)
+		dsc_max_bpc = min_t(u8, 12, conn_state->max_requested_bpc);
+	else
+		dsc_max_bpc = min_t(u8, 10, conn_state->max_requested_bpc);
+
+	max_bpp = min_t(u8, dsc_max_bpc * 3, limits->max_bpp);
+	min_bpp = limits->min_bpp;
+
+	num_bpc = drm_dp_dsc_sink_supported_input_bpcs(intel_dp->dsc_dpcd,
+						       dsc_bpc);
+	for (i = 0; i < num_bpc; i++) {
+		if (max_bpp >= dsc_bpc[i] * 3)
+			if (min_bpp > dsc_bpc[i] * 3)
+				min_bpp = dsc_bpc[i] * 3;
+	}
+	drm_dbg_kms(&i915->drm, "DSC Sink supported min bpp %d max bpp %d\n",
+				min_bpp, max_bpp);
+	for (bpp = max_bpp; bpp >= min_bpp; bpp -= 2 * 3) {
+		crtc_state->pbn = drm_dp_calc_pbn_mode(adjusted_mode->crtc_clock,
+						       bpp << 4,
+						       true);
+
+		slots = drm_dp_atomic_find_time_slots(state, &intel_dp->mst_mgr,
+						      connector->port,
+						      crtc_state->pbn);
+
+		drm_dbg_kms(&i915->drm, "Trying bpp %d got %d pbn %d slots\n",
+					bpp, crtc_state->pbn, slots);
+
+		if (slots == -EDEADLK)
+			return slots;
+		if (slots >= 0)
+			break;
 	}
 
-	drm_dp_mst_update_slots(topology_state, link_coding_cap);
+	if (slots < 0) {
+		drm_dbg_kms(&i915->drm, "failed finding vcpi slots:%d\n",
+			    slots);
+		return slots;
+	}
+
+	intel_link_compute_m_n(crtc_state->pipe_bpp,
+			       crtc_state->lane_count,
+			       adjusted_mode->crtc_clock,
+			       crtc_state->port_clock,
+			       &crtc_state->dp_m_n,
+			       constant_n, crtc_state->fec_enable);
+	crtc_state->dp_m_n.tu = slots;
 
 	return 0;
 }
@@ -181,10 +237,27 @@ static int intel_dp_mst_compute_config(struct intel_encoder *encoder,
 
 	ret = intel_dp_mst_compute_link_config(encoder, pipe_config,
 					       conn_state, &limits);
-	if (ret)
+
+	if (ret == -EDEADLK)
 		return ret;
 
-	ret = intel_dp_mst_update_slots(encoder, pipe_config, conn_state);
+	/* enable compression if the mode doesn't fit available BW */
+	drm_dbg_kms(&dev_priv->drm, "Force DSC en = %d\n", intel_dp->force_dsc_en);
+	if (ret || intel_dp->force_dsc_en) {
+		/*
+		 * Try to get at least some timeslots and then see, if
+		 * we can fit there with DSC.
+		 */
+		ret = intel_dp_dsc_mst_compute_link_config(encoder, pipe_config,
+							   conn_state, &limits);
+		if (ret < 0)
+			return ret;
+
+		ret = intel_dp_mst_dsc_compute_config(intel_dp, pipe_config,
+						      conn_state, &limits,
+						      pipe_config->dp_m_n.tu);
+	}
+
 	if (ret)
 		return ret;
 
@@ -314,8 +387,14 @@ intel_dp_mst_atomic_check(struct drm_connector *connector,
 			  struct drm_atomic_state *_state)
 {
 	struct intel_atomic_state *state = to_intel_atomic_state(_state);
+	struct drm_connector_state *new_conn_state =
+		drm_atomic_get_new_connector_state(&state->base, connector);
+	struct drm_connector_state *old_conn_state =
+		drm_atomic_get_old_connector_state(&state->base, connector);
 	struct intel_connector *intel_connector =
 		to_intel_connector(connector);
+	struct drm_crtc *new_crtc = new_conn_state->crtc;
+	struct drm_dp_mst_topology_mgr *mgr;
 	int ret;
 
 	ret = intel_digital_connector_atomic_check(connector, &state->base);
@@ -326,9 +405,28 @@ intel_dp_mst_atomic_check(struct drm_connector *connector,
 	if (ret)
 		return ret;
 
-	return drm_dp_atomic_release_time_slots(&state->base,
-						&intel_connector->mst_port->mst_mgr,
-						intel_connector->port);
+	if (!old_conn_state->crtc)
+		return 0;
+
+	/* We only want to free VCPI if this state disables the CRTC on this
+	 * connector
+	 */
+	if (new_crtc) {
+		struct intel_crtc *crtc = to_intel_crtc(new_crtc);
+		struct intel_crtc_state *crtc_state =
+			intel_atomic_get_new_crtc_state(state, crtc);
+
+		if (!crtc_state ||
+		    !drm_atomic_crtc_needs_modeset(&crtc_state->uapi) ||
+		    crtc_state->uapi.enable)
+			return 0;
+	}
+
+	mgr = &enc_to_mst(to_intel_encoder(old_conn_state->best_encoder))->primary->dp.mst_mgr;
+	ret = drm_dp_atomic_release_time_slots(&state->base, mgr,
+					       intel_connector->port);
+
+	return ret;
 }
 
 static void clear_act_sent(struct intel_encoder *encoder,
@@ -364,9 +462,11 @@ static void intel_mst_disable_dp(struct intel_atomic_state *state,
 	struct intel_dp *intel_dp = &dig_port->dp;
 	struct intel_connector *connector =
 		to_intel_connector(old_conn_state->connector);
+	struct drm_i915_private *i915 = to_i915(connector->base.dev);
 	struct drm_dp_mst_topology_state *mst_state =
 		drm_atomic_get_mst_topology_state(&state->base, &intel_dp->mst_mgr);
-	struct drm_i915_private *i915 = to_i915(connector->base.dev);
+	struct drm_dp_mst_atomic_payload *payload =
+		drm_atomic_get_mst_payload_state(mst_state, connector->port);
 
 	drm_dbg_kms(&i915->drm, "active links %d\n",
 		    intel_dp->active_mst_links);
@@ -374,7 +474,7 @@ static void intel_mst_disable_dp(struct intel_atomic_state *state,
 	intel_hdcp_disable(intel_mst->connector);
 
 	drm_dp_remove_payload(&intel_dp->mst_mgr, mst_state,
-			      drm_atomic_get_mst_payload_state(mst_state, connector->port));
+			      payload);
 
 	intel_audio_codec_disable(encoder, old_crtc_state, old_conn_state);
 }
@@ -438,7 +538,7 @@ static void intel_mst_post_disable_dp(struct intel_atomic_state *state,
 	 * no clock to the transcoder"
 	 */
 	if (DISPLAY_VER(dev_priv) < 12 || !last_mst_stream)
-		intel_ddi_disable_pipe_clock(old_crtc_state);
+		intel_ddi_disable_transcoder_clock(old_crtc_state);
 
 
 	intel_mst->connector = NULL;
@@ -475,9 +575,9 @@ static void intel_mst_pre_enable_dp(struct intel_atomic_state *state,
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_connector *connector =
 		to_intel_connector(conn_state->connector);
+	int ret;
 	struct drm_dp_mst_topology_state *mst_state =
 		drm_atomic_get_new_mst_topology_state(&state->base, &intel_dp->mst_mgr);
-	int ret;
 	bool first_mst_stream;
 
 	/* MST encoders are bound to a crtc, not to a connector,
@@ -502,8 +602,6 @@ static void intel_mst_pre_enable_dp(struct intel_atomic_state *state,
 		dig_port->base.pre_enable(state, &dig_port->base,
 						pipe_config, NULL);
 
-	intel_dp->active_mst_links++;
-
 	ret = drm_dp_add_payload_part1(&intel_dp->mst_mgr, mst_state,
 				       drm_atomic_get_mst_payload_state(mst_state, connector->port));
 	if (ret < 0)
@@ -518,7 +616,7 @@ static void intel_mst_pre_enable_dp(struct intel_atomic_state *state,
 	 * here for the following ones.
 	 */
 	if (DISPLAY_VER(dev_priv) < 12 || !first_mst_stream)
-		intel_ddi_enable_pipe_clock(encoder, pipe_config);
+		intel_ddi_enable_transcoder_clock(encoder, pipe_config);
 
 	intel_ddi_set_dp_msa(pipe_config, conn_state);
 }
@@ -532,9 +630,9 @@ static void intel_mst_enable_dp(struct intel_atomic_state *state,
 	struct intel_digital_port *dig_port = intel_mst->primary;
 	struct intel_dp *intel_dp = &dig_port->dp;
 	struct intel_connector *connector = to_intel_connector(conn_state->connector);
-	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct drm_dp_mst_topology_state *mst_state =
 		drm_atomic_get_new_mst_topology_state(&state->base, &intel_dp->mst_mgr);
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	enum transcoder trans = pipe_config->cpu_transcoder;
 
 	drm_WARN_ON(&dev_priv->drm, pipe_config->has_pch_encoder);
@@ -564,7 +662,6 @@ static void intel_mst_enable_dp(struct intel_atomic_state *state,
 
 	drm_dp_add_payload_part2(&intel_dp->mst_mgr, &state->base,
 				 drm_atomic_get_mst_payload_state(mst_state, connector->port));
-
 	if (DISPLAY_VER(dev_priv) >= 14 && pipe_config->fec_enable)
 		intel_de_rmw(dev_priv, MTL_CHICKEN_TRANS(trans), 0,
 			     FECSTALL_DIS_DPTSTREAM_DPTTG);
@@ -691,6 +788,10 @@ intel_dp_mst_mode_valid_ctx(struct drm_connector *connector,
 	int max_dotclk = to_i915(connector->dev)->max_dotclk_freq;
 	int max_rate, mode_rate, max_lanes, max_link_clock;
 	int ret;
+	bool dsc = false, bigjoiner = false;
+	u16 dsc_max_output_bpp = 0;
+	u8 dsc_slice_count = 0;
+	int target_clock = mode->clock;
 
 	if (drm_connector_is_unregistered(connector)) {
 		*status = MODE_ERROR;
@@ -727,6 +828,49 @@ intel_dp_mst_mode_valid_ctx(struct drm_connector *connector,
 		*status = MODE_H_ILLEGAL;
 		return 0;
 	}
+
+	if (intel_dp_need_bigjoiner(intel_dp, mode->hdisplay, target_clock)) {
+		bigjoiner = true;
+		max_dotclk *= 2;
+	}
+
+	if (DISPLAY_VER(dev_priv) >= 10 &&
+	    drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd)) {
+		/*
+		 * TBD pass the connector BPC,
+		 * for now U8_MAX so that max BPC on that platform would be picked
+		 */
+		int pipe_bpp = intel_dp_dsc_compute_bpp(intel_dp, U8_MAX);
+
+		if (drm_dp_sink_supports_fec(intel_dp->fec_capable)) {
+			dsc_max_output_bpp =
+				intel_dp_dsc_get_output_bpp(dev_priv,
+							    max_link_clock,
+							    max_lanes,
+							    target_clock,
+							    mode->hdisplay,
+							    bigjoiner,
+							    pipe_bpp, 1) >> 4;
+			dsc_slice_count =
+				intel_dp_dsc_get_slice_count(intel_dp,
+							     target_clock,
+							     mode->hdisplay,
+							     bigjoiner);
+		}
+
+		dsc = dsc_max_output_bpp && dsc_slice_count;
+	}
+
+	/*
+	 * Big joiner configuration needs DSC for TGL which is not true for
+	 * XE_LPD where uncompressed joiner is supported.
+	 */
+	if (DISPLAY_VER(dev_priv) < 13 && bigjoiner && !dsc)
+		return MODE_CLOCK_HIGH;
+
+	if (mode_rate > max_rate && !dsc)
+		return MODE_CLOCK_HIGH;
+
 
 	*status = intel_mode_valid_max_plane_size(dev_priv, mode, false);
 	return 0;
@@ -793,7 +937,35 @@ static bool intel_dp_mst_get_hw_state(struct intel_connector *connector)
 	return false;
 }
 
-static struct drm_connector *intel_dp_add_mst_connector(struct drm_dp_mst_topology_mgr *mgr, struct drm_dp_mst_port *port, const char *pathprop)
+static int intel_dp_mst_add_properties(struct intel_dp *intel_dp,
+				       struct drm_connector *connector,
+				       const char *pathprop)
+{
+	struct drm_i915_private *i915 = to_i915(connector->dev);
+
+	drm_object_attach_property(&connector->base,
+				   i915->drm.mode_config.path_property, 0);
+	drm_object_attach_property(&connector->base,
+				   i915->drm.mode_config.tile_property, 0);
+
+	intel_attach_force_audio_property(connector);
+	intel_attach_broadcast_rgb_property(connector);
+
+	/*
+	 * Reuse the prop from the SST connector because we're
+	 * not allowed to create new props after device registration.
+	 */
+	connector->max_bpc_property =
+		intel_dp->attached_connector->base.max_bpc_property;
+	if (connector->max_bpc_property)
+		drm_connector_attach_max_bpc_property(connector, 6, 12);
+
+	return drm_connector_set_path_property(connector, pathprop);
+}
+
+static struct drm_connector *intel_dp_add_mst_connector(struct drm_dp_mst_topology_mgr *mgr,
+							struct drm_dp_mst_port *port,
+							const char *pathprop)
 {
 	struct intel_dp *intel_dp = container_of(mgr, struct intel_dp, mst_mgr);
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
@@ -833,28 +1005,14 @@ static struct drm_connector *intel_dp_add_mst_connector(struct drm_dp_mst_topolo
 			goto err;
 	}
 
-	drm_object_attach_property(&connector->base, dev->mode_config.path_property, 0);
-	drm_object_attach_property(&connector->base, dev->mode_config.tile_property, 0);
-
-	ret = drm_connector_set_path_property(connector, pathprop);
+	ret = intel_dp_mst_add_properties(intel_dp, connector, pathprop);
 	if (ret)
 		goto err;
-
-	intel_attach_force_audio_property(connector);
-	intel_attach_broadcast_rgb_property(connector);
 
 	ret = intel_dp_hdcp_init(dig_port, intel_connector);
 	if (ret)
 		drm_dbg_kms(&dev_priv->drm, "[%s:%d] HDCP MST init failed, skipping.\n",
 			    connector->name, connector->base.id);
-	/*
-	 * Reuse the prop from the SST connector because we're
-	 * not allowed to create new props after device registration.
-	 */
-	connector->max_bpc_property =
-		intel_dp->attached_connector->base.max_bpc_property;
-	if (connector->max_bpc_property)
-		drm_connector_attach_max_bpc_property(connector, 6, 12);
 
 	return connector;
 
@@ -965,7 +1123,7 @@ intel_dp_mst_encoder_init(struct intel_digital_port *dig_port, int conn_base_id)
 	/* create encoders */
 	intel_dp_create_fake_mst_encoders(dig_port);
 	ret = drm_dp_mst_topology_mgr_init(&intel_dp->mst_mgr, &i915->drm,
-					   &intel_dp->aux, 16, 3, conn_base_id);
+					&intel_dp->aux, 16, 3, conn_base_id);
 	if (ret) {
 		intel_dp->mst_mgr.cbs = NULL;
 		return ret;
