@@ -24,6 +24,7 @@
 #include "intel_pch_display.h"
 #include "intel_pm.h"
 #include "skl_watermark.h"
+#include "intel_wb.h"
 
 static void intel_crtc_disable_noatomic(struct intel_crtc *crtc,
 					struct drm_modeset_acquire_ctx *ctx)
@@ -111,17 +112,17 @@ static void intel_crtc_disable_noatomic(struct intel_crtc *crtc,
 
 static void intel_modeset_update_connector_atomic_state(struct drm_i915_private *i915)
 {
-	struct intel_connector *connector;
+	struct drm_connector *connector;
 	struct drm_connector_list_iter conn_iter;
 
 	drm_connector_list_iter_begin(&i915->drm, &conn_iter);
-	for_each_intel_connector_iter(connector, &conn_iter) {
-		struct drm_connector_state *conn_state = connector->base.state;
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		struct drm_connector_state *conn_state = connector->state;
 		struct intel_encoder *encoder =
-			to_intel_encoder(connector->base.encoder);
+			to_intel_encoder(connector->encoder);
 
 		if (conn_state->crtc)
-			drm_connector_put(&connector->base);
+			drm_connector_put(connector);
 
 		if (encoder) {
 			struct intel_crtc *crtc =
@@ -133,7 +134,7 @@ static void intel_modeset_update_connector_atomic_state(struct drm_i915_private 
 			conn_state->crtc = &crtc->base;
 			conn_state->max_bpc = (crtc_state->pipe_bpp ?: 24) / 3;
 
-			drm_connector_get(&connector->base);
+			drm_connector_get(connector);
 		} else {
 			conn_state->best_encoder = NULL;
 			conn_state->crtc = NULL;
@@ -423,6 +424,8 @@ static void intel_modeset_readout_hw_state(struct drm_i915_private *i915)
 	struct intel_crtc *crtc;
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
+	struct drm_connector *_connector;
+	struct drm_encoder *_encoder;
 	struct drm_connector_list_iter conn_iter;
 	u8 active_pipes = 0;
 
@@ -499,38 +502,70 @@ static void intel_modeset_readout_hw_state(struct drm_i915_private *i915)
 	intel_dpll_readout_hw_state(i915);
 
 	drm_connector_list_iter_begin(&i915->drm, &conn_iter);
-	for_each_intel_connector_iter(connector, &conn_iter) {
-		if (connector->get_hw_state(connector)) {
-			struct intel_crtc_state *crtc_state;
-			struct intel_crtc *crtc;
+	drm_for_each_connector_iter(_connector, &conn_iter) {
+		struct intel_crtc_state *crtc_state;
+		struct intel_crtc *crtc;
+		struct drm_writeback_connector *wb_conn;
+		struct intel_wb *intel_wb;
 
-			connector->base.dpms = DRM_MODE_DPMS_ON;
+		connector = to_intel_connector(_connector);
+		if (!connector) {
+			wb_conn = drm_connector_to_writeback(_connector);
+			intel_wb = wb_conn_to_intel_wb(wb_conn);
+			_encoder = &intel_wb->base.base;
+			_connector->encoder = _encoder;
+			encoder = to_intel_encoder(_encoder);
+			pipe = 0;
+			if (encoder->get_hw_state(encoder, &pipe)) {
+				_connector->dpms = DRM_MODE_DPMS_ON;
+				crtc = to_intel_crtc(_encoder->crtc);
+				crtc_state = crtc ? to_intel_crtc_state(crtc->base.state) : NULL;
 
-			encoder = intel_attached_encoder(connector);
-			connector->base.encoder = &encoder->base;
-
-			crtc = to_intel_crtc(encoder->base.crtc);
-			crtc_state = crtc ? to_intel_crtc_state(crtc->base.state) : NULL;
-
-			if (crtc_state && crtc_state->hw.active) {
-				/*
-				 * This has to be done during hardware readout
-				 * because anything calling .crtc_disable may
-				 * rely on the connector_mask being accurate.
-				 */
-				crtc_state->uapi.connector_mask |=
-					drm_connector_mask(&connector->base);
-				crtc_state->uapi.encoder_mask |=
-					drm_encoder_mask(&encoder->base);
+				if (crtc_state && crtc_state->hw.active) {
+					/*
+					 * This has to be done during hardware readout
+					 * because anything calling .crtc_disable may
+					 * rely on the connector_mask being accurate.
+					 */
+					crtc_state->uapi.connector_mask |=
+						drm_connector_mask(&connector->base);
+					crtc_state->uapi.encoder_mask |=
+						drm_encoder_mask(&encoder->base);
+				}
+			} else {
+				_connector->dpms = DRM_MODE_DPMS_OFF;
+				_connector->encoder = NULL;
 			}
 		} else {
-			connector->base.dpms = DRM_MODE_DPMS_OFF;
-			connector->base.encoder = NULL;
+			if (connector->get_hw_state(connector)) {
+				connector->base.dpms = DRM_MODE_DPMS_OFF;
+				encoder = intel_attached_encoder(connector);
+				connector->base.encoder = &encoder->base;
+
+				crtc = to_intel_crtc(encoder->base.crtc);
+				crtc_state = crtc ? to_intel_crtc_state(crtc->base.state) : NULL;
+
+				if (crtc_state && crtc_state->hw.active) {
+					/*
+					 * This has to be done during hardware readout
+					 * because anything calling .crtc_disable may
+					 * rely on the connector_mask being accurate.
+					 */
+					crtc_state->uapi.connector_mask |=
+						drm_connector_mask(&connector->base);
+					crtc_state->uapi.encoder_mask |=
+						drm_encoder_mask(&encoder->base);
+				}
+			} else {
+				connector->base.dpms = DRM_MODE_DPMS_OFF;
+				connector->base.encoder = NULL;
+			}
 		}
 		drm_dbg_kms(&i915->drm,
-			    "[CONNECTOR:%d:%s] hw state readout: %s\n",
-			    connector->base.base.id, connector->base.name,
-			    str_enabled_disabled(connector->base.encoder));
+				"[CONNECTOR:%d:%s] hw state readout: %s\n",
+				_connector->base.id, _connector->name,
+				str_enabled_disabled(_connector->encoder));
+
 	}
 	drm_connector_list_iter_end(&conn_iter);
 

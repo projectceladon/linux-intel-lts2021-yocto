@@ -550,7 +550,7 @@ static void intel_hdmi_info(struct seq_file *m,
 static void intel_connector_info(struct seq_file *m,
 				 struct drm_connector *connector)
 {
-	struct intel_connector *intel_connector = to_intel_connector(connector);
+	struct intel_connector *intel_connector;
 	const struct drm_connector_state *conn_state = connector->state;
 	struct intel_encoder *encoder =
 		to_intel_encoder(conn_state->best_encoder);
@@ -573,6 +573,8 @@ static void intel_connector_info(struct seq_file *m,
 	if (!encoder)
 		return;
 
+	intel_connector = to_intel_connector(connector);
+
 	switch (connector->connector_type) {
 	case DRM_MODE_CONNECTOR_DisplayPort:
 	case DRM_MODE_CONNECTOR_eDP:
@@ -590,12 +592,15 @@ static void intel_connector_info(struct seq_file *m,
 		break;
 	}
 
-	seq_puts(m, "\tHDCP version: ");
-	intel_hdcp_info(m, intel_connector);
+	if (intel_connector) {
+		seq_puts(m, "\tHDCP version: ");
+		intel_hdcp_info(m, intel_connector);
+	}
 
 	seq_printf(m, "\tmax bpc: %u\n", connector->display_info.bpc);
 
-	intel_panel_info(m, intel_connector);
+	if (intel_connector)
+		intel_panel_info(m, intel_connector);
 
 	seq_printf(m, "\tmodes:\n");
 	list_for_each_entry(mode, &connector->modes, head)

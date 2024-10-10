@@ -34,6 +34,7 @@
 
 #include <linux/pm_qos.h>
 
+#include <drm/drm_writeback.h>
 #include <drm/ttm/ttm_device.h>
 
 #include "display/intel_display.h"
