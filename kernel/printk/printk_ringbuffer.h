@@ -20,6 +20,7 @@ struct printk_info {
 	u8	flags:5;	/* internal record flags */
 	u8	level:3;	/* syslog level */
 	u32	caller_id;	/* thread id or processor id */
+	u32	print_cpu;
 
 	struct dev_printk_info	dev_info;
 };

@@ -479,6 +479,11 @@ u32 log_buf_len_get(void)
 }
 EXPORT_SYMBOL_GPL(log_buf_len_get);
 
+/* Give the posibility to temporary disable slow (!CON_FAST) consoles */
+static atomic_t console_slow_suspended = ATOMIC_INIT(0);
+/* Keep the number of slow suspend in check */
+#define MAX_SLOW_SUSPEND_COUNT	(50)
+
 /*
  * Define how much of the log buffer we could take at maximum. The value
  * must be greater than two. Note that only half of the buffer is available
@@ -957,6 +962,7 @@ void log_buf_vmcoreinfo_setup(void)
 	VMCOREINFO_OFFSET(printk_info, ts_nsec);
 	VMCOREINFO_OFFSET(printk_info, text_len);
 	VMCOREINFO_OFFSET(printk_info, caller_id);
+	VMCOREINFO_OFFSET(printk_info, print_cpu);
 	VMCOREINFO_OFFSET(printk_info, dev_info);
 
 	VMCOREINFO_STRUCT_SIZE(dev_printk_info);
@@ -1068,6 +1074,7 @@ static unsigned int __init add_to_rb(struct printk_ringbuffer *rb,
 	dest_r.info->flags = r->info->flags;
 	dest_r.info->ts_nsec = r->info->ts_nsec;
 	dest_r.info->caller_id = r->info->caller_id;
+	dest_r.info->print_cpu = r->info->print_cpu;
 	memcpy(&dest_r.info->dev_info, &r->info->dev_info, sizeof(dest_r.info->dev_info));
 
 	prb_final_commit(&e);
@@ -1210,7 +1217,11 @@ MODULE_PARM_DESC(ignore_loglevel,
 
 static bool suppress_message_printing(int level)
 {
+#ifndef CON_IGNORELEVEL
 	return (level >= console_loglevel && !ignore_loglevel);
+#else
+	return false;
+#endif
 }
 
 #ifdef CONFIG_BOOT_PRINTK_DELAY
@@ -1276,12 +1287,12 @@ static size_t print_syslog(unsigned int level, char *buf)
 	return sprintf(buf, "<%u>", level);
 }
 
-static size_t print_time(u64 ts, char *buf)
+static size_t print_time(u64 ts, u8 print_cpu, char *buf)
 {
 	unsigned long rem_nsec = do_div(ts, 1000000000);
 
-	return sprintf(buf, "[%5lu.%06lu]",
-		       (unsigned long)ts, rem_nsec / 1000);
+	return sprintf(buf, "[%5lu.%06lu, %d]",
+		       (unsigned long)ts, rem_nsec / 1000, print_cpu);
 }
 
 #ifdef CONFIG_PRINTK_CALLER
@@ -1309,7 +1320,7 @@ static size_t info_print_prefix(const struct printk_info  *info, bool syslog,
 		len = print_syslog((info->facility << 3) | info->level, buf);
 
 	if (time)
-		len += print_time(info->ts_nsec, buf + len);
+		len += print_time(info->ts_nsec, info->print_cpu, buf + len);
 
 	len += print_caller(info->caller_id, buf + len);
 
@@ -1928,7 +1939,7 @@ static int console_trylock_spinning(void)
  * log_buf[start] to log_buf[end - 1].
  * The console_lock must be held.
  */
-static void call_console_drivers(const char *ext_text, size_t ext_len,
+static void call_console_drivers(int level, const char *ext_text, size_t ext_len,
 				 const char *text, size_t len)
 {
 	static char dropped_text[64];
@@ -1950,6 +1961,9 @@ static void call_console_drivers(const char *ext_text, size_t ext_len,
 	for_each_console(con) {
 		if (exclusive_console && con != exclusive_console)
 			continue;
+		if (atomic_read(&console_slow_suspended) &&
+		    !(con->flags & CON_FAST))
+			continue;
 		if (!(con->flags & CON_ENABLED))
 			continue;
 		if (!con->write)
@@ -1957,6 +1971,9 @@ static void call_console_drivers(const char *ext_text, size_t ext_len,
 		if (!cpu_online(smp_processor_id()) &&
 		    !(con->flags & CON_ANYTIME))
 			continue;
+		if (level >= console_loglevel &&
+            !(con->flags & CON_IGNORELEVEL) && !ignore_loglevel)
+            continue;
 		if (con->flags & CON_EXTENDED)
 			con->write(con, ext_text, ext_len);
 		else {
@@ -2234,6 +2251,7 @@ int vprintk_store(int facility, int level,
 	r.info->flags = flags & 0x1f;
 	r.info->ts_nsec = ts_nsec;
 	r.info->caller_id = caller_id;
+	r.info->print_cpu = raw_smp_processor_id();;
 	if (dev_info)
 		memcpy(&r.info->dev_info, dev_info, sizeof(r.info->dev_info));
 
@@ -2345,7 +2363,7 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 				  struct dev_printk_info *dev_info) { return 0; }
 static void console_lock_spinning_enable(void) { }
 static int console_lock_spinning_disable_and_check(void) { return 0; }
-static void call_console_drivers(const char *ext_text, size_t ext_len,
+static void call_console_drivers(int level, const char *ext_text, size_t ext_len,
 				 const char *text, size_t len) {}
 static bool suppress_message_printing(int level) { return false; }
 
@@ -2761,7 +2779,7 @@ skip:
 		console_lock_spinning_enable();
 
 		stop_critical_timings();	/* don't trace print latency */
-		call_console_drivers(ext_text, ext_len, text, len);
+		call_console_drivers(r.info->level, ext_text, ext_len, text, len);
 		start_critical_timings();
 
 		handover = console_lock_spinning_disable_and_check();
@@ -2852,6 +2870,34 @@ void console_flush_on_panic(enum con_flush_mode mode)
 	console_unlock();
 }
 
+void console_suspend_slow(void)
+{
+	struct console *c;
+
+	if (atomic_read(&console_slow_suspended) >= MAX_SLOW_SUSPEND_COUNT) {
+		pr_debug("Max slow suspend\n");
+		return;
+	}
+	if (atomic_add_return(1, &console_slow_suspended) == 1) {
+		pr_err("Suspend slow consoles\n");
+		for_each_console(c)
+			if (!(c->flags & CON_FAST))
+				pr_debug("%s suspended\n", c->name);
+	}
+}
+EXPORT_SYMBOL(console_suspend_slow);
+
+void console_restore_slow(void)
+{
+	if (atomic_read(&console_slow_suspended) <= 0) {
+		pr_debug("Min slow suspend\n");
+		return;
+	}
+
+	if (!atomic_sub_return(1, &console_slow_suspended))
+		pr_err("Restore slow consoles\n");
+}
+EXPORT_SYMBOL(console_restore_slow);
 /*
  * Return the console tty driver structure and its associated index
  */
