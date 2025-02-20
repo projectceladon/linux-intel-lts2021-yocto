@@ -1073,6 +1073,9 @@ intel_get_crtc_new_encoder(const struct intel_atomic_state *state,
 	master_crtc = intel_master_crtc(crtc_state);
 
 	for_each_new_connector_in_state(&state->base, connector, connector_state, i) {
+		if (connector->connector_type == DRM_MODE_CONNECTOR_WRITEBACK)
+			continue;
+
 		if (connector_state->crtc != &master_crtc->base)
 			continue;
 
